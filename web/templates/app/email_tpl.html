@@ -1,0 +1,110 @@
+{% extends "app/base.html" %}
+{% block title %}邮件模板{% endblock %}
+{% block extra_style %}
+<style>
+.tpl-tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap}
+.tpl-tab{padding:7px 16px;border-radius:6px;font-size:13px;cursor:pointer;
+         border:1px solid #e2e8f0;background:#fff;color:#374151;transition:.15s}
+.tpl-tab.active{background:#2563eb;color:#fff;border-color:#2563eb}
+.tpl-panel{display:none}
+.tpl-panel.active{display:block}
+.var-chip{display:inline-block;background:#eff6ff;color:#1e40af;font-family:monospace;
+          font-size:12px;padding:2px 8px;border-radius:4px;cursor:pointer;margin:2px;
+          border:1px solid #bfdbfe}
+.var-chip:hover{background:#dbeafe}
+</style>
+{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>邮件模板编辑</h1>
+  <span style="font-size:13px;color:#6b7280">保存后立即生效，无需重启</span>
+</div>
+<div class="content" style="max-width:860px">
+
+{% if saved %}
+<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;
+            padding:12px 16px;margin-bottom:16px;color:#166534;font-size:14px">
+  ✅ 模板已保存
+</div>
+{% endif %}
+
+<!-- 可用变量 -->
+<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;
+            padding:14px 16px;margin-bottom:16px;font-size:13px">
+  <b>📌 可用变量</b>（点击插入）：
+  <div style="margin-top:8px">
+    {% for var, desc in [('{contact_name}','联系人名字'),('{company_name}','公司名称'),
+                          ('{country}','国家'),('{sender_name}','你的名字')] %}
+    <span class="var-chip" onclick="insertVar('{{ var }}')">{{ var }}</span>
+    <span style="font-size:11px;color:#6b7280;margin-right:10px">{{ desc }}</span>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Tab 切换 -->
+<div class="tpl-tabs">
+  {% for key, tpl in templates.items() %}
+  <button class="tpl-tab {% if loop.first %}active{% endif %}"
+          onclick="switchTab('{{ key }}', this)" type="button">
+    {{ tpl.display_name }}
+  </button>
+  {% endfor %}
+</div>
+
+<form method="POST">
+{% for key, tpl in templates.items() %}
+<div class="tpl-panel {% if loop.first %}active{% endif %}" id="panel_{{ key }}">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px">
+    <p style="font-size:12px;color:#6b7280;margin-bottom:14px">{{ tpl.desc }}</p>
+    <div style="margin-bottom:14px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">邮件主题</label>
+      <input type="text" name="subject_{{ key }}" id="subj_{{ key }}"
+             value="{{ tpl.subject }}"
+             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+    </div>
+    <div>
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">邮件正文</label>
+      <textarea name="body_{{ key }}" id="body_{{ key }}"
+                style="width:100%;min-height:280px;padding:12px;font-family:monospace;
+                       font-size:13px;border:1px solid #d1d5db;border-radius:6px;
+                       resize:vertical;line-height:1.6"
+                onclick="setActive('{{ key }}')" onfocus="setActive('{{ key }}')">{{ tpl.body }}</textarea>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+  <button type="submit" style="padding:11px 28px;background:#2563eb;color:#fff;
+          border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer">
+    保存所有模板
+  </button>
+  <a href="/email-templates/reset"
+     onclick="return confirm('确认恢复默认模板？')"
+     style="font-size:13px;color:#9ca3af;text-decoration:underline">恢复默认</a>
+</div>
+</form>
+
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+var _ak = '{{ templates.keys()|list|first }}';
+function setActive(k) { _ak = k; }
+function switchTab(key, btn) {
+  document.querySelectorAll('.tpl-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tpl-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel_' + key).classList.add('active');
+  _ak = key;
+}
+function insertVar(v) {
+  var el = document.getElementById('body_' + _ak);
+  if (!el) return;
+  var s = el.selectionStart, e = el.selectionEnd;
+  el.value = el.value.slice(0, s) + v + el.value.slice(e);
+  el.selectionStart = el.selectionEnd = s + v.length;
+  el.focus();
+}
+</script>
+{% endblock %}

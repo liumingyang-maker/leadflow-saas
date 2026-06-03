@@ -1,0 +1,42 @@
+{% extends "onboarding/base.html" %}
+{% block body %}
+<div class="step-title">第 1 步 / 共 5 步</div>
+<h1>你们公司是做什么的？</h1>
+<p class="subtitle">填完这步，系统会自动匹配适合你行业的采集策略和 AI 提示词。</p>
+
+<form method="POST">
+  <div class="form-group">
+    <label>公司名称</label>
+    <input type="text" name="company_name" value="{{ cfg.company_name }}"
+           placeholder="例如：重庆驰翔摩托发动机有限公司" required>
+  </div>
+
+  <div class="form-group">
+    <label>所属行业</label>
+    <select name="industry" required>
+      <option value="">请选择行业...</option>
+      {% for val, label in industries %}
+      <option value="{{ val }}" {{ 'selected' if cfg.industry == val }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>主营产品</label>
+    <input type="text" name="product_name" value="{{ cfg.product_name }}"
+           placeholder="例如：CG/CB系列摩托车发动机、三轮车发动机" required>
+    <div class="hint">越具体越好，AI 会用这个来生成开发信和评分标准</div>
+  </div>
+
+  <div class="form-group">
+    <label>产品简介（可选）</label>
+    <textarea name="product_desc" rows="3"
+              placeholder="例如：专业生产 100cc-250cc 汽油摩托车发动机，OEM/ODM，MOQ 50台，10年出口经验"
+              style="resize:vertical">{{ cfg.product_desc }}</textarea>
+  </div>
+
+  <div class="actions">
+    <button class="btn-next" type="submit">下一步 →</button>
+  </div>
+</form>
+{% endblock %}

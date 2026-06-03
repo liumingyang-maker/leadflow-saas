@@ -1,0 +1,32 @@
+{% extends "onboarding/base.html" %}
+{% block body %}
+<div class="step-title">第 2 步 / 共 5 步</div>
+<h1>你的产品 HS 编码是多少？</h1>
+<p class="subtitle">HS 编码是海关用来识别货物的编码，系统用它在全球海关数据里找你的买家。</p>
+
+<form method="POST">
+  <div class="form-group">
+    <label>HS 编码（多个用逗号分隔）</label>
+    <input type="text" name="hs_codes"
+           value="{{ cfg.hs_codes | join(', ') }}"
+           placeholder="例如：8407, 8408, 8714">
+    <div class="hint">
+      不知道填什么？去
+      <a href="https://www.trade.gov.cn/bianmin/hscode.html" target="_blank">海关HS编码查询</a>
+      搜一下你的产品，或者先跳过，后面在设置里改。
+    </div>
+  </div>
+
+  <div class="form-group" style="margin-top:24px">
+    <label>Google 搜索关键词（系统用这些词去找买家网站，每行一个）</label>
+    <textarea name="search_keywords" rows="5" style="resize:vertical"
+              placeholder="例如：&#10;motorcycle engine importer&#10;CG engine buyer wholesale&#10;tricycle engine distributor">{{ cfg.search_keywords | join('\n') }}</textarea>
+    <div class="hint">用英文关键词，加上"importer/buyer/distributor/wholesale"效果更好</div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-next" type="submit">下一步 →</button>
+    <button class="btn-skip" type="submit" formaction="/onboarding/3">暂时跳过</button>
+  </div>
+</form>
+{% endblock %}

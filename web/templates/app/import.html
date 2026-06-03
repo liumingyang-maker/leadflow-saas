@@ -1,0 +1,120 @@
+{% extends "app/base.html" %}
+{% block title %}导入展会数据{% endblock %}
+{% block extra_style %}
+<style>
+.upload-zone{border:2px dashed #d1d5db;border-radius:10px;padding:40px;text-align:center;
+             cursor:pointer;transition:.2s;background:#fafafa}
+.upload-zone:hover{border-color:#2563eb;background:#eff6ff}
+.map-row{display:grid;grid-template-columns:1fr 24px 180px;align-items:center;
+         gap:8px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.preview-table{width:100%;border-collapse:collapse;font-size:12px}
+.preview-table th{background:#f8fafc;padding:6px 10px;text-align:left;border-bottom:2px solid #e2e8f0;font-size:11px;color:#6b7280}
+.preview-table td{padding:6px 10px;border-bottom:1px solid #f1f5f9;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>导入展会数据</h1>
+  <span style="font-size:13px;color:#6b7280">支持 .xlsx · .xls · .csv</span>
+</div>
+<div class="content" style="max-width:860px">
+
+{% if result %}
+<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 20px;margin-bottom:20px;color:#166534">
+  ✅ 导入完成
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+  {% for label,val,color in [('读取总行',result.total,'#111827'),('成功导入',result.db_new,'#16a34a'),('重复跳过',result.skipped,'#9ca3af'),('无效丢弃',result.invalid,'#dc2626')] %}
+  <div class="stat-card" style="text-align:center">
+    <div style="font-size:32px;font-weight:700;color:{{ color }}">{{ val }}</div>
+    <div style="font-size:12px;color:#6b7280;margin-top:4px">{{ label }}</div>
+  </div>
+  {% endfor %}
+</div>
+<a href="/import" style="display:inline-block;padding:8px 18px;background:#2563eb;color:#fff;border-radius:6px;font-size:13px;text-decoration:none">再导入一份</a>
+<a href="/leads" style="display:inline-block;padding:8px 18px;background:#f1f5f9;color:#374151;border-radius:6px;font-size:13px;text-decoration:none;margin-left:8px">查看客户列表</a>
+
+{% elif preview %}
+<form method="POST" action="/import/confirm">
+  <input type="hidden" name="tmpfile" value="{{ tmpfile }}">
+  <input type="hidden" name="source" value="{{ source }}">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:12px">确认列对应关系</h3>
+    {% for col in columns %}
+    <div class="map-row">
+      <div style="font-family:monospace;font-size:12px;color:#6b7280;background:#f8fafc;padding:3px 8px;border-radius:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ col }}</div>
+      <span style="color:#9ca3af">→</span>
+      <select name="map_{{ loop.index0 }}" style="padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;width:100%">
+        {% for val,label in [('','忽略'),('company_name','公司名称 ★'),('country','国家'),('email','邮箱'),('phone','电话'),('contact_name','联系人姓名'),('contact_title','职位'),('website','官网')] %}
+        <option value="{{ val }}" {{ 'selected' if auto_map[loop.index0] == val }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endfor %}
+  </div>
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:10px">数据预览（前5行，共 {{ total_rows }} 行）</h3>
+    <div style="overflow-x:auto">
+      <table class="preview-table">
+        <thead><tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in preview_rows %}<tr>{% for cell in row %}<td title="{{ cell }}">{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  <button type="submit" style="width:100%;padding:12px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer">
+    确认导入 {{ total_rows }} 条数据
+  </button>
+</form>
+
+{% else %}
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:24px;margin-bottom:16px">
+  <div style="background:#eff6ff;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#1e40af">
+    <b>使用方法：</b>从展会主办方拿到参展商名单（Excel 或 CSV），直接上传。系统自动识别列，清洗后导入客户库。
+  </div>
+  <form method="POST" action="/import/upload" enctype="multipart/form-data">
+    <div style="margin-bottom:16px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">展会名称</label>
+      <input type="text" name="source" placeholder="例如：CIMA重庆摩托车展2025"
+             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+    </div>
+    <div class="upload-zone" onclick="document.getElementById('fi').click()"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="handleDrop(event)">
+      <input type="file" id="fi" name="file" accept=".xlsx,.xls,.csv"
+             onchange="showName(this)" style="display:none">
+      <div style="font-size:40px;margin-bottom:10px">📂</div>
+      <div id="flabel" style="font-size:15px;font-weight:500;color:#374151">点击选择文件，或拖拽到这里</div>
+      <div style="font-size:12px;color:#9ca3af;margin-top:6px">支持 .xlsx · .xls · .csv</div>
+    </div>
+    <button id="upbtn" type="submit" disabled
+            style="width:100%;margin-top:14px;padding:11px;background:#d1d5db;color:#fff;
+                   border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:not-allowed">
+      上传并预览
+    </button>
+  </form>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+function showName(input) {
+  if (input.files.length > 0) {
+    document.getElementById('flabel').textContent = '已选择：' + input.files[0].name;
+    var btn = document.getElementById('upbtn');
+    btn.disabled = false; btn.style.background = '#2563eb'; btn.style.cursor = 'pointer';
+  }
+}
+function handleDrop(e) {
+  e.preventDefault(); e.currentTarget.classList.remove('drag-over');
+  if (e.dataTransfer.files.length > 0) {
+    var dt = new DataTransfer();
+    dt.items.add(e.dataTransfer.files[0]);
+    var fi = document.getElementById('fi');
+    fi.files = dt.files; showName(fi);
+  }
+}
+</script>
+{% endblock %}

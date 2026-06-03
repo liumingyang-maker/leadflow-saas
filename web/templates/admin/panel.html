@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>管理后台 — LeadFlow</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     background:#0f172a;min-height:100vh;color:#e2e8f0;font-size:14px}
+.topbar{background:#1e293b;border-bottom:1px solid #334155;padding:0 32px;
+        height:56px;display:flex;align-items:center;gap:16px}
+.topbar .brand{font-size:18px;font-weight:700;color:#2563eb}
+.topbar .title{font-size:14px;color:#64748b}
+.topbar .logout{margin-left:auto;font-size:13px;color:#64748b;
+                text-decoration:none;padding:6px 14px;border:1px solid #334155;
+                border-radius:6px}
+.topbar .logout:hover{color:#e2e8f0;border-color:#475569}
+.content{max-width:1200px;margin:32px auto;padding:0 24px}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+.stat{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px 20px}
+.stat .num{font-size:28px;font-weight:700;color:#fff}
+.stat .lbl{font-size:12px;color:#64748b;margin-top:4px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:10px;overflow:hidden}
+.card-header{padding:16px 20px;border-bottom:1px solid #334155;
+             display:flex;align-items:center;justify-content:space-between}
+.card-header h2{font-size:15px;font-weight:600}
+table{width:100%;border-collapse:collapse}
+th{padding:10px 16px;text-align:left;font-size:12px;font-weight:600;
+   color:#64748b;border-bottom:1px solid #334155;white-space:nowrap}
+td{padding:12px 16px;border-bottom:1px solid #1e293b;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#243349}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-active{background:#064e3b;color:#34d399}
+.badge-trial{background:#1e3a5f;color:#60a5fa}
+.badge-suspended{background:#450a0a;color:#f87171}
+.btn-sm{padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;
+        border:1px solid #475569;background:transparent;color:#94a3b8;transition:.15s}
+.btn-sm:hover{background:#334155;color:#e2e8f0}
+.btn-green{border-color:#059669;color:#34d399}
+.btn-green:hover{background:#064e3b}
+.btn-red{border-color:#dc2626;color:#f87171}
+.btn-red:hover{background:#450a0a}
+.note-form{display:flex;gap:6px;align-items:center}
+.note-form input{background:#0f172a;border:1px solid #334155;color:#e2e8f0;
+                 padding:4px 8px;border-radius:4px;font-size:12px;width:140px}
+.note-form button{padding:4px 8px;font-size:12px;border:1px solid #334155;
+                  background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">LeadFlow</div>
+  <div class="title">管理员后台</div>
+  <a href="/admin/logout" class="logout">退出</a>
+</div>
+
+<div class="content">
+
+  <!-- 统计 -->
+  {% set active = tenants | selectattr('status','eq','active') | list | length %}
+  {% set trial  = tenants | selectattr('status','eq','trial') | list | length %}
+  {% set suspended = tenants | selectattr('status','eq','suspended') | list | length %}
+  <div class="stats-row">
+    <div class="stat"><div class="num">{{ tenants | length }}</div><div class="lbl">总客户数</div></div>
+    <div class="stat"><div class="num" style="color:#34d399">{{ active }}</div><div class="lbl">正式订阅</div></div>
+    <div class="stat"><div class="num" style="color:#60a5fa">{{ trial }}</div><div class="lbl">试用中</div></div>
+    <div class="stat"><div class="num" style="color:#f87171">{{ suspended }}</div><div class="lbl">已暂停</div></div>
+  </div>
+
+  <!-- 客户列表 -->
+  <div class="card">
+    <div class="card-header">
+      <h2>所有客户</h2>
+      <span style="font-size:12px;color:#64748b">共 {{ tenants|length }} 个账号</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>邮箱</th>
+          <th>公司</th>
+          <th>行业</th>
+          <th>状态</th>
+          <th>注册时间</th>
+          <th>最后登录</th>
+          <th>试用到期</th>
+          <th>备注</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tenants %}
+        <tr>
+          <td style="color:#93c5fd;font-size:13px">{{ t.email }}</td>
+          <td style="font-weight:500">{{ t.company_name or '—' }}</td>
+          <td style="color:#64748b">{{ t.industry or '—' }}</td>
+          <td>
+            {% if t.status == 'active' %}
+            <span class="badge badge-active">✓ 正式</span>
+            {% elif t.status == 'trial' %}
+            <span class="badge badge-trial">试用</span>
+            {% else %}
+            <span class="badge badge-suspended">已停</span>
+            {% endif %}
+          </td>
+          <td style="color:#64748b;font-size:12px">{{ t.created_at[:10] if t.created_at else '—' }}</td>
+          <td style="color:#64748b;font-size:12px">{{ t.last_login[:10] if t.last_login else '从未' }}</td>
+          <td style="color:#64748b;font-size:12px">{{ t.trial_ends[:10] if t.trial_ends else '—' }}</td>
+          <td>
+            <form class="note-form" method="POST" action="/admin/tenant/{{ t.id }}/note">
+              <input type="text" name="note" value="{{ t.note or '' }}" placeholder="备注（收款等）">
+              <button type="submit">存</button>
+            </form>
+          </td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap">
+              {% if t.status != 'active' %}
+              <form method="POST" action="/admin/tenant/{{ t.id }}/activate" style="display:inline">
+                <button class="btn-sm btn-green" type="submit">开通</button>
+              </form>
+              {% endif %}
+              {% if t.status == 'active' %}
+              <form method="POST" action="/admin/tenant/{{ t.id }}/trial" style="display:inline">
+                <button class="btn-sm" type="submit">改试用</button>
+              </form>
+              {% endif %}
+              {% if t.status != 'suspended' %}
+              <form method="POST" action="/admin/tenant/{{ t.id }}/suspend" style="display:inline">
+                <button class="btn-sm btn-red" type="submit"
+                        onclick="return confirm('确认暂停 {{ t.email }}？')">暂停</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" style="text-align:center;color:#475569;padding:40px">
+          还没有注册用户
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:20px;font-size:12px;color:#475569;text-align:center">
+    默认管理员：admin@leads.com / admin123 &nbsp;·&nbsp; 首次登录后请修改密码
+  </div>
+</div>
+</body>
+</html>

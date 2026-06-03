@@ -1,0 +1,79 @@
+{% extends "onboarding/base.html" %}
+{% block extra_style %}
+<style>
+.region-block{margin-bottom:20px}
+.region-label{font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;
+              letter-spacing:.5px;margin-bottom:8px;padding:6px 0;
+              border-bottom:1px solid #f1f5f9}
+.country-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px}
+.country-item{display:flex;align-items:center;gap:7px;padding:7px 10px;
+              border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;
+              transition:.15s;font-size:13px}
+.country-item:hover{border-color:#2563eb;background:#eff6ff}
+.country-item input{width:15px;height:15px;cursor:pointer;flex-shrink:0}
+.country-item.checked{border-color:#2563eb;background:#eff6ff}
+.quick-btns{display:flex;gap:8px;margin-bottom:16px}
+.quick-btn{padding:5px 12px;font-size:12px;border:1px solid #d1d5db;
+           border-radius:5px;background:#f9fafb;cursor:pointer}
+.quick-btn:hover{background:#f1f5f9}
+</style>
+{% endblock %}
+{% block body %}
+<div class="step-title">第 3 步 / 共 5 步</div>
+<h1>选择你的目标市场</h1>
+<p class="subtitle">勾选你想开发的国家，系统只会在这些市场里找买家，避免浪费采集额度。</p>
+
+<form method="POST">
+  <div class="quick-btns">
+    <button type="button" class="quick-btn" onclick="checkAll(true)">全选</button>
+    <button type="button" class="quick-btn" onclick="checkAll(false)">全不选</button>
+    <button type="button" class="quick-btn" onclick="checkRegion('非洲')">非洲全选</button>
+    <button type="button" class="quick-btn" onclick="checkRegion('东南亚')">东南亚全选</button>
+  </div>
+
+  {% for region_name, countries in regions.items() %}
+  <div class="region-block" data-region="{{ region_name }}">
+    <div class="region-label">{{ region_name }}</div>
+    <div class="country-grid">
+      {% for country in countries %}
+      <label class="country-item {{ 'checked' if country in cfg.target_countries }}"
+             id="lbl_{{ country | replace(' ','_') }}">
+        <input type="checkbox" name="countries" value="{{ country }}"
+               {{ 'checked' if country in cfg.target_countries }}
+               onchange="toggleStyle(this)">
+        {{ country }}
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="actions" style="margin-top:24px">
+    <button class="btn-next" type="submit">下一步 →</button>
+    <button class="btn-skip" type="submit" formaction="/onboarding/4">暂时跳过</button>
+  </div>
+</form>
+{% endblock %}
+{% block extra_script %}
+<script>
+function toggleStyle(cb) {
+  var lbl = cb.closest('.country-item');
+  if (cb.checked) lbl.classList.add('checked');
+  else lbl.classList.remove('checked');
+}
+function checkAll(v) {
+  document.querySelectorAll('input[name="countries"]').forEach(function(cb) {
+    cb.checked = v; toggleStyle(cb);
+  });
+}
+function checkRegion(name) {
+  document.querySelectorAll('.region-block').forEach(function(block) {
+    if (block.dataset.region === name) {
+      block.querySelectorAll('input[name="countries"]').forEach(function(cb) {
+        cb.checked = true; toggleStyle(cb);
+      });
+    }
+  });
+}
+</script>
+{% endblock %}

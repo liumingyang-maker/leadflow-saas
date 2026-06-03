@@ -1,0 +1,50 @@
+{% extends "app/base.html" %}
+{% block title %}数据统计{% endblock %}
+{% block content %}
+<div class="topbar"><h1>数据统计</h1></div>
+<div class="content">
+  <div class="stat-grid">
+    {% for label, val, color in [
+      ('总客户数', stats.total, '#111827'),
+      ('A级', stats.grade_A, '#16a34a'),
+      ('B级', stats.grade_B, '#2563eb'),
+      ('C级', stats.grade_C, '#d97706'),
+      ('D级', stats.grade_D, '#9ca3af'),
+      ('已联系', stats.contacted, '#c2410c'),
+      ('已回复', stats.replied, '#166534'),
+      ('已成交', stats.converted, '#065f46'),
+    ] %}
+    <div class="stat-card">
+      <div class="label">{{ label }}</div>
+      <div class="value" style="color:{{ color }}">{{ val }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if history %}
+  <div class="table-wrap" style="margin-top:16px">
+    <div style="padding:14px 16px;font-weight:600;font-size:14px;border-bottom:1px solid #e2e8f0">
+      最近采集记录
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>时间</th><th>来源</th><th>获取</th><th>新增</th><th>重复</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in history %}
+        <tr>
+          <td style="font-size:12px;color:#6b7280">{{ h.started_at[:16] if h.started_at else '—' }}</td>
+          <td>{{ h.source }}</td>
+          <td>{{ h.results_count }}</td>
+          <td style="color:#16a34a;font-weight:500">+{{ h.new_leads_count }}</td>
+          <td style="color:#9ca3af">{{ h.dupes_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

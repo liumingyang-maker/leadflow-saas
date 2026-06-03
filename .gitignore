@@ -1,0 +1,11 @@
+tenants/
+*.db
+*.log
+__pycache__/
+*.pyc
+.env
+tmp/
+dist/
+build/
+*.spec
+.DS_Store

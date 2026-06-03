@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}LeadFlow{% endblock %} — {{ session.get('company_name','') }}</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     font-size:14px;color:#1a1a1a;background:#f4f5f7;line-height:1.5}
+a{color:#2563eb;text-decoration:none}
+a:hover{text-decoration:underline}
+button{cursor:pointer;font-size:13px}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:210px;background:#1e293b;color:#cbd5e1;flex-shrink:0;display:flex;flex-direction:column}
+.main{flex:1;overflow:auto;display:flex;flex-direction:column}
+.sidebar-logo{padding:18px 16px 12px;border-bottom:1px solid #334155}
+.sidebar-logo .brand{font-size:16px;font-weight:700;color:#fff;letter-spacing:.3px}
+.sidebar-logo .company{font-size:11px;color:#64748b;margin-top:3px;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar nav{padding:10px 0;flex:1}
+.sidebar nav a{display:flex;align-items:center;gap:8px;padding:9px 16px;
+               color:#94a3b8;font-size:13px;transition:all .15s}
+.sidebar nav a:hover{background:#334155;color:#fff;text-decoration:none}
+.sidebar nav a.active{background:#2563eb;color:#fff}
+.nav-icon{width:16px;text-align:center;font-style:normal;flex-shrink:0}
+.sidebar-footer{padding:12px 16px;border-top:1px solid #334155;font-size:11px;color:#475569}
+.sidebar-footer a{color:#64748b;font-size:11px}
+.topbar{background:#fff;border-bottom:1px solid #e2e8f0;padding:0 24px;
+        height:52px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.topbar h1{font-size:16px;font-weight:600;flex:1}
+.content{padding:24px;flex:1}
+.btn{padding:6px 14px;border-radius:6px;border:1px solid #d1d5db;
+     background:#fff;color:#374151;font-size:13px;cursor:pointer;transition:all .15s}
+.btn:hover{background:#f9fafb}
+.btn-primary{background:#2563eb;color:#fff;border-color:#2563eb}
+.btn-primary:hover{background:#1d4ed8}
+.btn-sm{padding:4px 10px;border-radius:5px;font-size:12px;border:1px solid #d1d5db;background:#fff}
+.grade{display:inline-block;width:22px;height:22px;line-height:22px;
+       text-align:center;border-radius:4px;font-weight:700;font-size:12px}
+.grade-A{background:#dcfce7;color:#166534}
+.grade-B{background:#dbeafe;color:#1e40af}
+.grade-C{background:#fef9c3;color:#854d0e}
+.grade-D{background:#f3f4f6;color:#6b7280}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:500}
+.status-new{background:#f0f9ff;color:#0369a1}
+.status-scored{background:#f5f3ff;color:#7c3aed}
+.status-contacted{background:#fff7ed;color:#c2410c}
+.status-replied{background:#f0fdf4;color:#166534}
+.status-converted{background:#ecfdf5;color:#065f46}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px}
+.stat-card .label{font-size:12px;color:#6b7280;margin-bottom:4px}
+.stat-card .value{font-size:24px;font-weight:700;color:#111827}
+.table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{background:#f8fafc}
+th{padding:10px 14px;text-align:left;font-weight:600;color:#6b7280;font-size:12px;border-bottom:1px solid #e2e8f0}
+td{padding:10px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+#toast{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast-item{padding:10px 16px;border-radius:7px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.toast-ok{background:#ecfdf5;color:#065f46;border:1px solid #86efac}
+.toast-err{background:#fef2f2;color:#991b1b;border:1px solid #fca5a5}
+.toast-info{background:#eff6ff;color:#1e40af;border:1px solid #93c5fd}
+.task-bar{display:none;position:fixed;bottom:16px;right:16px;background:#1e293b;
+          color:#e2e8f0;border-radius:8px;padding:12px 16px;font-size:13px;z-index:9999}
+.task-bar.show{display:block}
+</style>
+{% block extra_style %}{% endblock %}
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="brand">LeadFlow</div>
+    <div class="company">{{ session.get('company_name','') }}</div>
+  </div>
+  <nav>
+    <a href="/leads" class="{{ 'active' if request.endpoint in ('leads_list','dashboard') }}">
+      <i class="nav-icon">📋</i> 客户列表
+    </a>
+    <a href="/stats" class="{{ 'active' if request.endpoint == 'stats_page' }}">
+      <i class="nav-icon">📊</i> 数据统计
+    </a>
+    <a href="/export" target="_blank">
+      <i class="nav-icon">⬇️</i> 导出 CSV
+    </a>
+    <a href="#" onclick="triggerTask('collect')">
+      <i class="nav-icon">🔍</i> 立即采集
+    </a>
+    <a href="#" onclick="triggerTask('score')">
+      <i class="nav-icon">⭐</i> 立即评分
+    </a>
+    <a href="#" onclick="triggerTask('all')">
+      <i class="nav-icon">🚀</i> 全流程运行
+    </a>
+    <a href="/email-templates" class="{{ 'active' if request.endpoint == 'email_templates' }}">
+      <i class="nav-icon">✉</i> 邮件模板
+    </a>
+    <a href="/import" class="{{ 'active' if 'import' in request.endpoint }}">
+      <i class="nav-icon">📥</i> 导入展会数据
+    </a>
+    <a href="/settings" class="{{ 'active' if request.endpoint == 'settings' }}">
+      <i class="nav-icon">⚙️</i> 系统设置
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    LeadFlow v1.0<br>
+    <a href="/logout">退出登录</a>
+  </div>
+</aside>
+<div class="main">
+  {% block content %}{% endblock %}
+</div>
+</div>
+<div id="toast"></div>
+<div class="task-bar" id="taskBar"><div id="taskMsg">任务运行中...</div></div>
+<script>
+function toast(msg, type='info') {
+  const t = document.createElement('div');
+  t.className = 'toast-item toast-' + (type==='ok'?'ok':type==='err'?'err':'info');
+  t.textContent = msg;
+  document.getElementById('toast').appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+function updateLead(id, fields) {
+  return fetch('/lead/'+id+'/update', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(fields)
+  }).then(r=>r.json()).then(d=>{
+    if(d.ok) toast('已更新','ok'); else toast('更新失败','err'); return d;
+  });
+}
+function deleteLead(id) {
+  if(!confirm('确认删除？')) return;
+  fetch('/lead/'+id+'/delete',{method:'POST'}).then(r=>r.json())
+    .then(d=>{ if(d.ok){toast('已删除','ok');location.reload();} });
+}
+let _poll=null;
+function triggerTask(step) {
+  const labels={collect:'采集',score:'评分',all:'全流程运行'};
+  if(!confirm('确认启动「'+labels[step]+'」？')) return;
+  fetch('/run/'+step,{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(!d.ok){toast('启动失败','err');return;}
+    toast('任务已启动','info'); pollTask(d.task_id);
+  });
+}
+function pollTask(id) {
+  const bar=document.getElementById('taskBar');
+  const msg=document.getElementById('taskMsg');
+  bar.classList.add('show'); msg.textContent='运行中...';
+  if(_poll) clearInterval(_poll);
+  _poll=setInterval(()=>{
+    fetch('/task/'+id).then(r=>r.json()).then(d=>{
+      if(d.status==='done'){
+        clearInterval(_poll); bar.classList.remove('show');
+        toast('完成: '+(d.log||[]).join(' | '),'ok');
+        setTimeout(()=>location.reload(),800);
+      } else if(d.status==='error'){
+        clearInterval(_poll); bar.classList.remove('show');
+        toast('失败: '+(d.log||[]).join(', '),'err');
+      } else { msg.textContent='运行中... '+new Date().toLocaleTimeString(); }
+    });
+  }, 2000);
+}
+</script>
+{% block extra_script %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,133 @@
+{% extends "app/base.html" %}
+{% block title %}客户列表{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>客户列表 <span style="font-size:13px;font-weight:400;color:#9ca3af">共 {{ total }} 条</span></h1>
+  <a href="/export" class="btn" style="font-size:13px">⬇ 导出CSV</a>
+  <button class="btn btn-primary" onclick="triggerTask('all')" style="font-size:13px">🚀 全流程运行</button>
+</div>
+<div class="content">
+
+  <!-- 统计卡片 -->
+  <div class="stat-grid">
+    {% for label, val, color in [
+      ('总计', stats.total, '#111827'),
+      ('A级客户', stats.grade_A, '#16a34a'),
+      ('B级客户', stats.grade_B, '#2563eb'),
+      ('已联系', stats.contacted, '#d97706'),
+      ('回复率', (stats.replied_rate|round(1))|string + '%', '#7c3aed'),
+    ] %}
+    <div class="stat-card">
+      <div class="label">{{ label }}</div>
+      <div class="value" style="color:{{ color }}">{{ val }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 筛选栏 -->
+  <form method="GET" action="/leads" style="background:#fff;border:1px solid #e2e8f0;
+        border-radius:8px;padding:14px 16px;margin-bottom:16px;
+        display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <input name="q" value="{{ filters.q or '' }}" placeholder="搜索公司/联系人/邮箱..."
+           style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;
+                  font-size:13px;min-width:200px">
+    <select name="grade" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="">全部等级</option>
+      {% for g in ['A','B','C','D'] %}
+      <option {{ 'selected' if filters.grade == g }}>{{ g }}</option>
+      {% endfor %}
+    </select>
+    <select name="status" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="">全部状态</option>
+      {% for s,l in [('new','新建'),('scored','已评分'),('contacted','已联系'),('replied','已回复'),('converted','已成交')] %}
+      <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ l }}</option>
+      {% endfor %}
+    </select>
+    <select name="country" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="">全部国家</option>
+      {% for c in countries %}
+      <option {{ 'selected' if filters.country == c }}>{{ c }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary" style="font-size:13px">筛选</button>
+    <a href="/leads" class="btn" style="font-size:13px">重置</a>
+  </form>
+
+  <!-- 客户表格 -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:40px">级</th>
+          <th>公司名称</th>
+          <th>国家</th>
+          <th style="width:60px;text-align:center">评分</th>
+          <th>联系人</th>
+          <th>邮箱</th>
+          <th style="width:70px;text-align:center">进口次数</th>
+          <th>状态</th>
+          <th style="width:120px;text-align:right">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lead in leads %}
+        <tr>
+          <td style="text-align:center">
+            <span class="grade grade-{{ lead.grade }}">{{ lead.grade }}</span>
+          </td>
+          <td>
+            <a href="/lead/{{ lead.id }}" style="font-weight:500;color:#111827">
+              {{ lead.company_name }}
+            </a>
+          </td>
+          <td style="color:#6b7280;font-size:12px">{{ lead.country }}</td>
+          <td style="text-align:center;font-weight:600">{{ lead.final_score or '—' }}</td>
+          <td style="font-size:13px">
+            {% if lead.contact_name %}
+            <div>{{ lead.contact_name }}</div>
+            <div style="font-size:11px;color:#9ca3af">{{ lead.contact_title or '' }}</div>
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-size:12px;color:#2563eb">
+            {% if lead.email %}
+            <a href="mailto:{{ lead.email }}">{{ lead.email }}</a>
+            {% else %}<span style="color:#d1d5db">无邮箱</span>{% endif %}
+          </td>
+          <td style="text-align:center;color:#6b7280">{{ lead.import_count_6m or '—' }}</td>
+          <td>
+            <span class="status-badge status-{{ lead.status or 'new' }}">
+              {{ {'new':'新建','scored':'已评分','contacted':'已联系',
+                  'replied':'已回复','converted':'已成交','rejected':'已拒绝'}.get(lead.status,'新建') }}
+            </span>
+          </td>
+          <td style="text-align:right">
+            <a href="/lead/{{ lead.id }}" class="btn-sm">详情</a>
+            <button class="btn-sm" style="color:#dc2626;border-color:#fca5a5"
+                    onclick="deleteLead('{{ lead.id }}')">删除</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af">
+          暂无客户数据 — 点击「全流程运行」开始采集
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 分页 -->
+  {% if total_pages > 1 %}
+  <div style="display:flex;gap:4px;justify-content:center;margin-top:16px;font-size:13px">
+    {% for p in range(1, total_pages+1) %}
+    <a href="?page={{ p }}"
+       style="padding:5px 10px;border-radius:5px;border:1px solid #e2e8f0;
+              background:{{ '#2563eb' if p==page else '#fff' }};
+              color:{{ '#fff' if p==page else '#374151' }};text-decoration:none">
+      {{ p }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

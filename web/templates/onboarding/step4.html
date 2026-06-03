@@ -1,0 +1,38 @@
+{% extends "onboarding/base.html" %}
+{% block body %}
+<div class="step-title">第 4 步 / 共 5 步</div>
+<h1>填入数据采集 API Key</h1>
+<p class="subtitle">
+  这些 Key 是系统从海关数据和搜索引擎采集真实买家数据用的。
+  <b>不填也能用</b>（用演示数据），有了 Key 才能采集真实数据。
+</p>
+
+<form method="POST">
+  {% for key, label, hint, url in [
+    ('importyeti_api_key', 'ImportYeti API Key', '海关进口记录，$99/月，最核心的数据源', 'https://importyeti.com'),
+    ('serpapi_key', 'SerpAPI Key', 'Google搜索采集，$50/月，找买家官网', 'https://serpapi.com'),
+    ('hunter_api_key', 'Hunter.io API Key', '查找买家邮箱，免费50次/月', 'https://hunter.io'),
+  ] %}
+  <div class="form-group">
+    <label>
+      {{ label }}
+      <span style="font-weight:400;color:#9ca3af;font-size:12px;margin-left:6px">{{ hint }}</span>
+    </label>
+    <input type="text" name="{{ key }}"
+           value="{{ cfg.get(key, '') }}"
+           placeholder="可留空，先用演示模式">
+    <div class="hint">获取地址：<a href="{{ url }}" target="_blank">{{ url }}</a></div>
+  </div>
+  {% endfor %}
+
+  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;
+              padding:14px;margin-top:8px;font-size:13px;color:#92400e">
+    💡 建议先跳过这步，用演示数据跑通整个流程，确认适合你再购买 API。
+  </div>
+
+  <div class="actions" style="margin-top:24px">
+    <button class="btn-next" type="submit">下一步 →</button>
+    <button class="btn-skip" type="submit" formaction="/onboarding/5">暂时跳过</button>
+  </div>
+</form>
+{% endblock %}

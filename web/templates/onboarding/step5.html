@@ -1,0 +1,53 @@
+{% extends "onboarding/base.html" %}
+{% block body %}
+<div class="step-title">第 5 步 / 共 5 步</div>
+<h1>设置发件人信息</h1>
+<p class="subtitle">系统发开发信时会用这些信息，让客户知道是谁在联系他们。</p>
+
+<form method="POST">
+  <div class="form-group">
+    <label>你的姓名（发件人名字）</label>
+    <input type="text" name="sender_name"
+           value="{{ cfg.sender_name }}"
+           placeholder="例如：李明 / Ming Li">
+  </div>
+
+  <div class="form-group">
+    <label>发件公司名（英文）</label>
+    <input type="text" name="email_from_name"
+           value="{{ cfg.email_from_name or cfg.company_name }}"
+           placeholder="例如：Chixiang Motor">
+  </div>
+
+  <div class="form-group">
+    <label>Gmail 邮箱地址</label>
+    <input type="email" name="smtp_user"
+           value="{{ cfg.smtp_user }}"
+           placeholder="yourname@gmail.com">
+    <div class="hint">推荐用 Gmail，稳定可靠，后面设置里配置应用密码后即可发送</div>
+  </div>
+
+  <div class="form-group">
+    <label>Gmail 应用密码</label>
+    <input type="password" name="smtp_pass"
+           value="{{ cfg.smtp_pass }}"
+           placeholder="16位应用密码（不是登录密码）">
+    <div class="hint">Gmail → 管理账号 → 安全性 → 两步验证 → 应用密码 → 生成</div>
+  </div>
+
+  <div class="form-group">
+    <label>邮件签名（英文，出现在每封邮件末尾）</label>
+    <textarea name="email_signature" rows="4" style="resize:vertical"
+              placeholder="例如：&#10;Best regards,&#10;{sender_name}&#10;{{ cfg.company_name }} | Chongqing, China&#10;WhatsApp: +86 131 0000 0000">{{ cfg.email_signature }}</textarea>
+  </div>
+
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;
+              padding:14px;font-size:13px;color:#1e40af;margin-bottom:20px">
+    ✅ 填完这步，系统就配置好了！你可以随时在<b>系统设置</b>里修改这些信息。
+  </div>
+
+  <div class="actions">
+    <button class="btn-next" type="submit">完成设置，进入看板 🚀</button>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,110 @@
+{% extends "app/base.html" %}
+{% block title %}系统设置{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>系统设置</h1>
+  <span style="font-size:13px;color:#6b7280">保存后立即生效</span>
+</div>
+<div class="content" style="max-width:720px">
+
+{% if saved %}
+<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;
+            padding:12px 16px;margin-bottom:16px;color:#166534;font-size:14px">
+  ✅ 设置已保存
+</div>
+{% endif %}
+
+<form method="POST">
+
+  <!-- AI 总开关 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px 20px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:15px;font-weight:600">🤖 AI 功能</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:3px">
+          关闭时使用规则评分 + 固定邮件模板，完全免费
+        </div>
+      </div>
+      <label style="position:relative;display:inline-block;width:48px;height:26px">
+        <input type="checkbox" name="AI_ENABLED" id="aiToggle"
+               {% if cfg.ai_enabled %}checked{% endif %}
+               onchange="document.getElementById('aiBox').style.display=this.checked?'':'none'"
+               style="opacity:0;width:0;height:0">
+        <span style="position:absolute;inset:0;background:{% if cfg.ai_enabled %}#2563eb{% else %}#d1d5db{% endif %};
+              border-radius:26px;cursor:pointer;transition:.3s"></span>
+      </label>
+    </div>
+  </div>
+
+  <div id="aiBox" style="{{ '' if cfg.ai_enabled else 'display:none' }}">
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px 20px;margin-bottom:14px">
+      <div style="font-weight:600;margin-bottom:4px">⚡ DeepSeek API Key
+        <span style="font-size:11px;font-weight:400;color:#9ca3af;margin-left:6px">日常主力 · 约¥2-5/月</span>
+      </div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:10px">
+        负责：开发信生成 · 客户评分 · 翻译 · 搜索解析
+      </div>
+      <input type="text" name="deepseek_api_key" value="{{ cfg.deepseek_api_key or '' }}"
+             placeholder="sk-xxxxxxxx"
+             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace">
+    </div>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px 20px;margin-bottom:14px">
+      <div style="font-weight:600;margin-bottom:4px">🧠 Claude API Key
+        <span style="font-size:11px;font-weight:400;color:#9ca3af;margin-left:6px">高价值把关 · 可选</span>
+      </div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:10px">负责：A级客户深度评估</div>
+      <input type="text" name="anthropic_api_key" value="{{ cfg.anthropic_api_key or '' }}"
+             placeholder="sk-ant-xxxxxxxx（可留空）"
+             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace">
+    </div>
+  </div>
+
+  <!-- 邮件 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:14px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:16px">✉ 邮件发送</h3>
+    {% for fname,label,typ,ph in [
+      ('smtp_user','Gmail 邮箱','email','yourname@gmail.com'),
+      ('smtp_pass','Gmail 应用密码（16位）','password','xxxx xxxx xxxx xxxx'),
+      ('sender_name','发件人姓名','text','例如：Li Ming'),
+      ('email_from_name','发件公司名（英文）','text','例如：ABC Export Co.'),
+    ] %}
+    <div style="margin-bottom:14px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">{{ label }}</label>
+      <input type="{{ typ }}" name="{{ fname }}" value="{{ cfg.get(fname,'') }}" placeholder="{{ ph }}"
+             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+    </div>
+    {% endfor %}
+    <div style="margin-bottom:4px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">邮件签名（英文）</label>
+      <textarea name="email_signature" rows="3"
+                style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical">{{ cfg.email_signature or '' }}</textarea>
+    </div>
+  </div>
+
+  <!-- 采集 API -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:14px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">🔍 数据采集 API</h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:16px">不填用演示数据，填了才能采集真实买家</p>
+    {% for fname,label,hint in [
+      ('importyeti_api_key','ImportYeti API Key','海关进口数据，$99/月'),
+      ('serpapi_key','SerpAPI Key','Google搜索采集，$50/月'),
+      ('hunter_api_key','Hunter.io API Key','邮箱查找，免费50次/月'),
+    ] %}
+    <div style="margin-bottom:14px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:4px">
+        {{ label }} <span style="font-weight:400;color:#9ca3af;font-size:12px">{{ hint }}</span>
+      </label>
+      <input type="text" name="{{ fname }}" value="{{ cfg.get(fname,'') }}"
+             placeholder="可留空"
+             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace">
+    </div>
+    {% endfor %}
+  </div>
+
+  <button type="submit" style="width:100%;padding:12px;background:#2563eb;color:#fff;
+          border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer">
+    保存设置
+  </button>
+</form>
+</div>
+{% endblock %}
