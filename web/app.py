@@ -236,13 +236,23 @@ def onboarding_step(step):
                                       kw_raw.split("\n") if k.strip()]
 
         elif step == 3:
-            selected = request.form.getlist("countries")
-            cfg["target_countries"] = selected
-            # 自动生成三级优先级（前3个tier1，接下来5个tier2，其余tier3）
+            import json as _json
+            selected_regions   = _json.loads(request.form.get("selected_regions", "[]"))
+            excluded_countries = _json.loads(request.form.get("excluded_countries", "[]"))
+            excluded_set = set(excluded_countries)
+            # 最终国家 = 选中洲的所有国家 − 排除的国家
+            final = []
+            for r in selected_regions:
+                for c in tenant_ctx.REGIONS.get(r, []):
+                    if c not in excluded_set:
+                        final.append(c)
+            cfg["selected_regions"]   = selected_regions
+            cfg["excluded_countries"] = excluded_countries
+            cfg["target_countries"]   = final
             cfg["market_priority"] = {
-                "tier1": selected[:3],
-                "tier2": selected[3:8],
-                "tier3": selected[8:],
+                "tier1": final[:3],
+                "tier2": final[3:8],
+                "tier3": final[8:],
             }
 
         elif step == 4:
