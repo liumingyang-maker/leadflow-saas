@@ -46,38 +46,56 @@ def get_collection_rules_path(tid: str) -> Path:
     return tenant_dir(tid) / "collection_rules.json"
 
 
-# 默认可选国家列表（行业通用）
-ALL_COUNTRIES = [
-    # 非洲
-    "Nigeria", "Tanzania", "Kenya", "Ghana", "Uganda", "Ethiopia",
-    "Mozambique", "Senegal", "Cameroon", "Ivory Coast", "South Africa",
-    "Egypt", "Morocco", "Algeria",
-    # 东南亚
-    "Vietnam", "Indonesia", "Thailand", "Philippines", "Myanmar",
-    "Malaysia", "Cambodia",
-    # 南亚
-    "Pakistan", "Bangladesh", "Nepal", "Sri Lanka",
-    # 拉丁美洲
-    "Brazil", "Mexico", "Colombia", "Peru", "Argentina", "Chile",
-    "Ecuador", "Bolivia",
-    # 中东
-    "UAE", "Saudi Arabia", "Iran", "Iraq",
-    # 东欧/中亚
-    "Russia", "Kazakhstan", "Ukraine",
-]
-
 REGIONS = {
-    "非洲":   ["Nigeria","Tanzania","Kenya","Ghana","Uganda","Ethiopia",
-               "Mozambique","Senegal","Cameroon","Ivory Coast","South Africa",
-               "Egypt","Morocco","Algeria"],
-    "东南亚": ["Vietnam","Indonesia","Thailand","Philippines","Myanmar",
-               "Malaysia","Cambodia"],
-    "南亚":   ["Pakistan","Bangladesh","Nepal","Sri Lanka"],
-    "拉丁美洲":["Brazil","Mexico","Colombia","Peru","Argentina","Chile",
-               "Ecuador","Bolivia"],
-    "中东":   ["UAE","Saudi Arabia","Iran","Iraq"],
-    "东欧/中亚":["Russia","Kazakhstan","Ukraine"],
+    "非洲": [
+        "Nigeria", "Ethiopia", "Egypt", "DR Congo", "Tanzania", "Kenya",
+        "South Africa", "Uganda", "Algeria", "Sudan", "Morocco", "Angola",
+        "Mozambique", "Ghana", "Ivory Coast", "Cameroon", "Niger", "Burkina Faso",
+        "Mali", "Malawi", "Zambia", "Senegal", "Zimbabwe", "Chad", "Guinea",
+        "Rwanda", "Benin", "Burundi", "Tunisia", "Libya", "Togo",
+        "Sierra Leone", "Eritrea", "Central African Republic", "Mauritania",
+        "Botswana", "Namibia", "Gambia", "Gabon",
+    ],
+    "东南亚": [
+        "Indonesia", "Philippines", "Vietnam", "Thailand", "Myanmar",
+        "Malaysia", "Cambodia", "Laos", "Singapore", "Brunei", "East Timor",
+    ],
+    "南亚": [
+        "India", "Pakistan", "Bangladesh", "Nepal", "Sri Lanka",
+        "Afghanistan", "Maldives",
+    ],
+    "中东": [
+        "Turkey", "Saudi Arabia", "UAE", "Iraq", "Iran", "Yemen",
+        "Syria", "Jordan", "Kuwait", "Oman", "Qatar", "Bahrain",
+        "Lebanon", "Israel", "Palestine",
+    ],
+    "北美": [
+        "USA", "Canada", "Mexico",
+    ],
+    "拉丁美洲": [
+        "Brazil", "Colombia", "Argentina", "Peru", "Venezuela", "Chile",
+        "Ecuador", "Bolivia", "Paraguay", "Uruguay", "Guatemala", "Honduras",
+        "El Salvador", "Nicaragua", "Costa Rica", "Panama",
+        "Dominican Republic", "Cuba", "Haiti", "Jamaica", "Trinidad and Tobago",
+    ],
+    "西欧": [
+        "Germany", "UK", "France", "Italy", "Spain", "Netherlands",
+        "Belgium", "Sweden", "Norway", "Denmark", "Finland", "Switzerland",
+        "Austria", "Portugal", "Greece", "Ireland", "Czech Republic",
+        "Hungary", "Romania", "Poland", "Bulgaria", "Croatia", "Slovakia",
+        "Slovenia", "Serbia", "Bosnia", "Albania", "North Macedonia",
+    ],
+    "东欧/中亚": [
+        "Russia", "Ukraine", "Kazakhstan", "Belarus", "Uzbekistan",
+        "Azerbaijan", "Georgia", "Armenia", "Kyrgyzstan", "Tajikistan",
+        "Turkmenistan", "Moldova",
+    ],
+    "大洋洲": [
+        "Australia", "New Zealand", "Papua New Guinea", "Fiji",
+    ],
 }
+
+ALL_COUNTRIES = [c for countries in REGIONS.values() for c in countries]
 
 INDUSTRY_OPTIONS = [
     ("motorcycle", "摩托车/摩配"),

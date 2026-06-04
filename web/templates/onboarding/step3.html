@@ -44,12 +44,15 @@
   <h3 style="font-size:14px;font-weight:600;color:#374151;margin-bottom:12px">① 选择目标大洲</h3>
   <div class="region-grid">
     {% set region_flags = {
-      '非洲':    {'flag':'🌍','en':'Africa'},
-      '东南亚':  {'flag':'🌏','en':'Southeast Asia'},
-      '南亚':    {'flag':'🇮🇳','en':'South Asia'},
-      '拉丁美洲':{'flag':'🌎','en':'Latin America'},
-      '中东':    {'flag':'🕌','en':'Middle East'},
-      '东欧/中亚':{'flag':'🏔️','en':'E. Europe / C. Asia'}
+      '非洲':     {'flag':'🌍'},
+      '东南亚':   {'flag':'🌏'},
+      '南亚':     {'flag':'🇮🇳'},
+      '中东':     {'flag':'🕌'},
+      '北美':     {'flag':'🇺🇸'},
+      '拉丁美洲': {'flag':'🌎'},
+      '西欧':     {'flag':'🇪🇺'},
+      '东欧/中亚': {'flag':'🏔️'},
+      '大洋洲':   {'flag':'🦘'}
     } %}
     {% for region_name, countries in regions.items() %}
     {% set meta = region_flags.get(region_name, {'flag':'🌐','en':''}) %}
