@@ -440,16 +440,35 @@ def run_step(step):
             db = _get_db(tid)
             os.chdir(str(BASE.parent / "core"))
             if step in ("collect", "all"):
+                from module2_cleaner import DataCleaner
+                countries = cfg.get("target_countries", [])[:20]
+
+                # ImportYeti 采集
                 from module1_collectors.importyeti import ImportYetiCollector
                 col = ImportYetiCollector()
                 col.api_key = cfg.get("importyeti_api_key", "")
                 col.mode = "api" if col.api_key else "scrape"
                 raw = col.fetch_all(mock=not col.api_key)
                 if raw:
-                    from module2_cleaner import DataCleaner
                     stats = DataCleaner().run(raw, source="importyeti",
                                              db_path=tenant_ctx.get_db_path(tid))
-                    logs.append(f"采集: 新增{stats.get('db_new',0)}条")
+                    logs.append(f"ImportYeti: 新增{stats.get('db_new',0)}条")
+
+                # Serper+DeepSeek 搜索采集
+                serper_key   = cfg.get("serpapi_key", "")
+                deepseek_key = cfg.get("deepseek_api_key", "")
+                if serper_key or deepseek_key:
+                    from module1_collectors.google_search import SerperDeepSeekCollector
+                    gc = SerperDeepSeekCollector()
+                    gc.serper_key    = serper_key
+                    gc.deepseek_key  = deepseek_key
+                    gc.product_name  = cfg.get("product_name", "")
+                    gc.search_keywords = cfg.get("search_keywords", [])
+                    g_raw = gc.fetch_all(countries=countries, mock=not serper_key)
+                    if g_raw:
+                        gs = DataCleaner().run(g_raw, source="google",
+                                              db_path=tenant_ctx.get_db_path(tid))
+                        logs.append(f"搜索采集: 新增{gs.get('db_new',0)}条")
             if step in ("score", "all"):
                 from module3_scorer import LeadScorer
                 s = LeadScorer(db_path=tenant_ctx.get_db_path(tid)).run(use_ai=False)

@@ -8,26 +8,79 @@
 </p>
 
 <form method="POST">
-  {% for key, label, hint, url in [
-    ('importyeti_api_key', 'ImportYeti API Key', '海关进口记录，$99/月，最核心的数据源', 'https://importyeti.com'),
-    ('serpapi_key', 'SerpAPI Key', 'Google搜索采集，$50/月，找买家官网', 'https://serpapi.com'),
-    ('hunter_api_key', 'Hunter.io API Key', '查找买家邮箱，免费50次/月', 'https://hunter.io'),
-  ] %}
+
+  <!-- ImportYeti -->
   <div class="form-group">
     <label>
-      {{ label }}
-      <span style="font-weight:400;color:#9ca3af;font-size:12px;margin-left:6px">{{ hint }}</span>
+      ImportYeti API Key
+      <span style="font-weight:400;color:#9ca3af;font-size:12px;margin-left:6px">
+        美国海关进口记录，最核心的数据源
+      </span>
     </label>
-    <input type="text" name="{{ key }}"
-           value="{{ cfg.get(key, '') }}"
+    <input type="text" name="importyeti_api_key"
+           value="{{ cfg.get('importyeti_api_key', '') }}"
            placeholder="可留空，先用演示模式">
-    <div class="hint">获取地址：<a href="{{ url }}" target="_blank">{{ url }}</a></div>
+    <div class="hint">
+      获取地址：<a href="https://importyeti.com" target="_blank">importyeti.com</a>
+      &nbsp;·&nbsp; 免费可查询，付费解锁完整联系方式
+    </div>
   </div>
-  {% endfor %}
 
-  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;
-              padding:14px;margin-top:8px;font-size:13px;color:#92400e">
-    💡 建议先跳过这步，用演示数据跑通整个流程，确认适合你再购买 API。
+  <!-- Serper.dev（替代 SerpAPI）-->
+  <div class="form-group">
+    <label>
+      Serper.dev API Key
+      <span style="font-weight:400;color:#16a34a;font-size:12px;margin-left:6px">
+        ✅ 注册免费送 2500 次
+      </span>
+    </label>
+    <input type="text" name="serpapi_key"
+           value="{{ cfg.get('serpapi_key', '') }}"
+           placeholder="可留空">
+    <div class="hint">
+      谷歌搜索采集买家官网，比 SerpAPI 便宜 50 倍。
+      获取：<a href="https://serper.dev" target="_blank">serper.dev</a> → 注册 → 免费领 2500 次
+    </div>
+  </div>
+
+  <!-- DeepSeek -->
+  <div class="form-group">
+    <label>
+      DeepSeek API Key
+      <span style="font-weight:400;color:#16a34a;font-size:12px;margin-left:6px">
+        ✅ 注册免费送余额
+      </span>
+    </label>
+    <input type="text" name="deepseek_api_key"
+           value="{{ cfg.get('deepseek_api_key', '') }}"
+           placeholder="可留空">
+    <div class="hint">
+      AI 智能分析搜索结果 + 客户评分 + 自动写开发信。
+      获取：<a href="https://platform.deepseek.com" target="_blank">platform.deepseek.com</a> → 注册 → API Keys
+    </div>
+  </div>
+
+  <!-- Hunter.io -->
+  <div class="form-group">
+    <label>
+      Hunter.io API Key
+      <span style="font-weight:400;color:#9ca3af;font-size:12px;margin-left:6px">
+        找买家联系邮箱，免费 25 次/月
+      </span>
+    </label>
+    <input type="text" name="hunter_api_key"
+           value="{{ cfg.get('hunter_api_key', '') }}"
+           placeholder="可留空">
+    <div class="hint">
+      输入买家网址自动找到联系人邮箱。
+      获取：<a href="https://hunter.io" target="_blank">hunter.io</a> → 注册免费使用
+    </div>
+  </div>
+
+  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;
+              padding:14px;margin-top:8px;font-size:13px;color:#166534">
+    💡 建议先申请 <b>Serper.dev</b>（免费2500次）和 <b>DeepSeek</b>（注册送余额），
+    两个加一起就能完整跑采集+AI分析，ImportYeti 和 Hunter 后续再补。
   </div>
 
   <div class="actions" style="margin-top:24px">
