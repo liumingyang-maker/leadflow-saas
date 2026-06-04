@@ -72,6 +72,12 @@
   <div class="exclude-box">
     <p>从已选大洲里勾选不想采集的国家</p>
     <div id="no-region-tip">请先在上方选择至少一个大洲</div>
+    <div id="search-wrap" style="display:none;margin-bottom:12px">
+      <input type="text" id="countrySearch" placeholder="🔍 搜索国家名称…"
+             oninput="filterCountries(this.value)"
+             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;
+                    border-radius:7px;font-size:13px;outline:none">
+    </div>
     <div class="exclude-grid" id="excludeGrid"></div>
   </div>
 
@@ -113,6 +119,8 @@ function toggleRegion(card) {
 function rebuildExcludeGrid() {
   var grid = document.getElementById('excludeGrid');
   var tip  = document.getElementById('no-region-tip');
+  var searchWrap = document.getElementById('search-wrap');
+  var searchInput = document.getElementById('countrySearch');
   grid.innerHTML = '';
 
   var allCountries = [];
@@ -122,14 +130,18 @@ function rebuildExcludeGrid() {
 
   if (allCountries.length === 0) {
     tip.style.display = 'block';
+    searchWrap.style.display = 'none';
     return;
   }
   tip.style.display = 'none';
+  searchWrap.style.display = 'block';
+  if (searchInput) searchInput.value = '';
 
   allCountries.forEach(function(c) {
     var isExcl = excludedCountries.has(c);
     var div = document.createElement('label');
     div.className = 'excl-item' + (isExcl ? ' excluded' : '');
+    div.dataset.name = c;
     div.innerHTML = '<input type="checkbox"' + (isExcl ? ' checked' : '') + '> ' + c;
     div.querySelector('input').addEventListener('change', function() {
       if (this.checked) { excludedCountries.add(c); div.classList.add('excluded'); }
@@ -137,6 +149,13 @@ function rebuildExcludeGrid() {
       updateResult();
     });
     grid.appendChild(div);
+  });
+}
+
+function filterCountries(keyword) {
+  var kw = keyword.trim();
+  document.querySelectorAll('#excludeGrid .excl-item').forEach(function(el) {
+    el.style.display = (!kw || el.dataset.name.indexOf(kw) !== -1) ? '' : 'none';
   });
 }
 
