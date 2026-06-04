@@ -5,6 +5,7 @@ admin_db.py — 全局管理数据库
 import sqlite3
 import uuid
 import hashlib
+import hmac
 import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -59,7 +60,6 @@ def init():
                 used        INTEGER DEFAULT 0
             );
         """)
-        # 迁移：给老账号补上 email_verified 列（已有账号直接标记为已验证）
         try:
             conn.execute("ALTER TABLE tenants ADD COLUMN email_verified INTEGER DEFAULT 0")
             conn.execute("UPDATE tenants SET email_verified=1")
@@ -68,12 +68,28 @@ def init():
     _ensure_admin()
 
 
+# ── 密码哈希（PBKDF2 + 随机盐）────────────────────────────
+
 def _hash(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    """生成带盐的 PBKDF2-SHA256 哈希，格式：pbkdf2$<salt>$<hash>"""
+    salt = os.urandom(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 260000)
+    return f"pbkdf2${salt.hex()}${key.hex()}"
+
+
+def _verify(password: str, stored: str) -> bool:
+    """验证密码，兼容旧版裸SHA-256格式（登录时自动升级）"""
+    if stored.startswith("pbkdf2$"):
+        _, salt_hex, key_hex = stored.split("$")
+        salt = bytes.fromhex(salt_hex)
+        key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 260000)
+        return hmac.compare_digest(key.hex(), key_hex)
+    # 旧格式 SHA-256 兼容
+    return hmac.compare_digest(hashlib.sha256(password.encode()).hexdigest(), stored)
 
 
 def _ensure_admin():
-    """确保至少有一个管理员账号（默认 admin@leads.com / admin123）"""
+    """确保至少有一个管理员账号"""
     with get_conn() as conn:
         row = conn.execute("SELECT id FROM admin_users LIMIT 1").fetchone()
         if not row:
@@ -86,14 +102,13 @@ def _ensure_admin():
 # ── 租户操作 ──────────────────────────────────────────────
 
 def register_tenant(email: str, password: str) -> dict:
-    """注册新租户，返回 {ok, tenant_id, error}"""
     with get_conn() as conn:
         existing = conn.execute(
             "SELECT id FROM tenants WHERE email=?", (email,)
         ).fetchone()
         if existing:
             return {"ok": False, "error": "该邮箱已注册"}
-        tid = str(uuid.uuid4()).replace("-", "")[:16]
+        tid = uuid.uuid4().hex[:16]
         trial_ends = (datetime.now(timezone.utc) + timedelta(days=14)
                       ).strftime("%Y-%m-%d %H:%M:%S")
         conn.execute("""
@@ -101,7 +116,6 @@ def register_tenant(email: str, password: str) -> dict:
             (id, email, password_hash, status, created_at, trial_ends)
             VALUES (?,?,?,?,?,?)
         """, (tid, email, _hash(password), "trial", _now(), trial_ends))
-    # 创建租户目录
     tenant_dir = Path(__file__).parent / "tenants" / tid
     tenant_dir.mkdir(parents=True, exist_ok=True)
     _init_tenant_config(tid)
@@ -109,50 +123,43 @@ def register_tenant(email: str, password: str) -> dict:
 
 
 def _init_tenant_config(tid: str):
-    """创建租户默认配置文件"""
     import json
     cfg_path = Path(__file__).parent / "tenants" / tid / "config.json"
     if not cfg_path.exists():
         default = {
-            "company_name": "",
-            "industry": "",
-            "product_name": "",
-            "product_desc": "",
-            "hs_codes": [],
-            "target_countries": [],
+            "company_name": "", "industry": "", "product_name": "",
+            "product_desc": "", "hs_codes": [], "target_countries": [],
+            "selected_regions": [], "excluded_countries": [],
             "search_keywords": [],
             "market_priority": {"tier1": [], "tier2": [], "tier3": []},
-            "smtp_user": "",
-            "smtp_pass": "",
-            "importyeti_api_key": "",
-            "serpapi_key": "",
-            "hunter_api_key": "",
-            "deepseek_api_key": "",
-            "anthropic_api_key": "",
-            "ai_enabled": False,
-            "email_ai_mode": False,
-            "email_from_name": "",
-            "email_signature": "",
-            "sender_name": "",
-            "onboarding_step": 0
+            "smtp_user": "", "smtp_pass": "",
+            "importyeti_api_key": "", "serpapi_key": "",
+            "hunter_api_key": "", "deepseek_api_key": "",
+            "anthropic_api_key": "", "ai_enabled": False,
+            "email_ai_mode": False, "email_from_name": "",
+            "email_signature": "", "sender_name": "",
+            "onboarding_step": 0,
         }
         cfg_path.write_text(json.dumps(default, ensure_ascii=False, indent=2),
                             encoding="utf-8")
 
 
 def login_tenant(email: str, password: str) -> dict:
-    """验证租户登录，返回 {ok, tenant, error}"""
     with get_conn() as conn:
         row = conn.execute(
             "SELECT * FROM tenants WHERE email=?", (email,)
         ).fetchone()
     if not row:
         return {"ok": False, "error": "邮箱或密码错误"}
-    if row["password_hash"] != _hash(password):
+    if not _verify(password, row["password_hash"]):
         return {"ok": False, "error": "邮箱或密码错误"}
     if row["status"] == "suspended":
         return {"ok": False, "error": "账号已被暂停，请联系客服"}
-    # 更新最后登录时间
+    # 旧密码格式自动升级
+    if not row["password_hash"].startswith("pbkdf2$"):
+        with get_conn() as conn:
+            conn.execute("UPDATE tenants SET password_hash=? WHERE id=?",
+                         (_hash(password), row["id"]))
     with get_conn() as conn:
         conn.execute("UPDATE tenants SET last_login=? WHERE id=?",
                      (_now(), row["id"]))
@@ -162,13 +169,14 @@ def login_tenant(email: str, password: str) -> dict:
 def login_admin(email: str, password: str) -> bool:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT id FROM admin_users WHERE email=? AND password_hash=?",
-            (email, _hash(password))
+            "SELECT password_hash FROM admin_users WHERE email=?", (email,)
         ).fetchone()
-    return bool(row)
+    if not row:
+        return False
+    return _verify(password, row["password_hash"])
 
 
-def get_tenant_by_email(email: str) -> dict:
+def get_tenant_by_email(email: str):
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM tenants WHERE email=?", (email,)).fetchone()
     return dict(row) if row else None
@@ -200,10 +208,9 @@ def all_tenants() -> list:
     return [dict(r) for r in rows]
 
 
-# ── 邮箱验证 & 密码重置 Token ─────────────────────────────
+# ── 邮箱验证 & 密码重置 ────────────────────────────────────
 
 def create_email_token(tid: str, email: str, token_type: str) -> str:
-    """创建验证/重置 token，有效期30分钟"""
     token = uuid.uuid4().hex
     expires = (datetime.now(timezone.utc) + timedelta(minutes=30)
                ).strftime("%Y-%m-%d %H:%M:%S")
@@ -216,7 +223,8 @@ def create_email_token(tid: str, email: str, token_type: str) -> str:
 
 
 def verify_email_token(token: str, token_type: str) -> dict:
-    """验证 token，返回 {ok, tenant_id, email, error}"""
+    if not token or len(token) != 32:
+        return {"ok": False, "error": "链接无效"}
     with get_conn() as conn:
         row = conn.execute(
             "SELECT * FROM email_tokens WHERE token=? AND type=?", (token, token_type)
@@ -238,7 +246,6 @@ def mark_email_verified(tid: str):
 
 
 def can_send_reset_email(email: str) -> bool:
-    """1小时内只能发一次重置邮件"""
     one_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)
                     ).strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as conn:
@@ -262,3 +269,13 @@ def is_trial_expired(tenant: dict) -> bool:
     if not trial_ends:
         return False
     return trial_ends < _now()
+
+
+# ── 清理过期 token（定期调用）─────────────────────────────
+
+def cleanup_expired_tokens():
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM email_tokens WHERE expires_at < ? OR used=1",
+            (_now(),)
+        )

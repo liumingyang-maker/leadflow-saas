@@ -1,4 +1,5 @@
 config.py
+secret_key.bin
 tenants/
 *.db
 *.log
