@@ -9,7 +9,7 @@ from pathlib import Path
 BASE = Path(__file__).parent
 sys.path.insert(0, str(BASE))
 sys.path.insert(0, str(BASE / "web"))
-sys.path.insert(0, str(BASE.parent / "leads"))   # 复用原项目核心逻辑
+sys.path.insert(0, str(BASE / "core"))   # 核心模块
 os.chdir(str(BASE))
 
 logging.basicConfig(

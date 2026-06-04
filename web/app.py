@@ -12,7 +12,7 @@ from flask_cors import CORS
 
 BASE = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE))
-sys.path.insert(0, str(BASE.parent / "leads"))   # 复用原项目核心模块
+sys.path.insert(0, str(BASE.parent / "core"))   # 核心模块
 
 import admin_db
 import tenant_ctx
@@ -207,8 +207,8 @@ def onboarding_step(step):
 def _init_tenant_db(tid: str, cfg: dict):
     """用租户配置初始化数据库，写入演示数据"""
     db_path = tenant_ctx.get_db_path(tid)
-    os.chdir(str(BASE.parent / "leads"))
-    sys.path.insert(0, str(BASE.parent / "leads"))
+    os.chdir(str(BASE.parent / "core"))
+    sys.path.insert(0, str(BASE.parent / "core"))
     import importlib
     # 动态设置 DB 路径后初始化
     from database import Database
@@ -353,7 +353,7 @@ def run_step(step):
         try:
             logs = []
             db = _get_db(tid)
-            os.chdir(str(BASE.parent / "leads"))
+            os.chdir(str(BASE.parent / "core"))
             if step in ("collect", "all"):
                 from module1_collectors.importyeti import ImportYetiCollector
                 col = ImportYetiCollector()
@@ -562,7 +562,7 @@ def import_confirm():
         return render_template("app/import.html", cfg=current_cfg(),
                                result={"total": len(rows), "db_new": 0,
                                        "skipped": 0, "invalid": len(rows)})
-    os.chdir(str(BASE.parent / "leads"))
+    os.chdir(str(BASE.parent / "core"))
     from module2_cleaner import cleaner
     db = _get_db(tid)
     stats = cleaner.run(raw_leads, source=source)
@@ -666,7 +666,7 @@ def _get_db(tid: str):
     """获取租户数据库实例"""
     if tid not in _db_cache:
         db_path = tenant_ctx.get_db_path(tid)
-        os.chdir(str(BASE.parent / "leads"))
+        os.chdir(str(BASE.parent / "core"))
         from database import Database
         d = Database(db_path=db_path)
         d.init()

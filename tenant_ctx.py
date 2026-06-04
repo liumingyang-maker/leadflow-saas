@@ -10,10 +10,10 @@ from pathlib import Path
 
 BASE = Path(__file__).parent
 
-# 把原来的 leads 项目核心模块加入路径（复用）
-LEADS_PATH = Path(__file__).parent.parent / "leads"
-if str(LEADS_PATH) not in sys.path:
-    sys.path.insert(0, str(LEADS_PATH))
+# 核心模块路径（core/ 目录）
+CORE_PATH = Path(__file__).parent / "core"
+if str(CORE_PATH) not in sys.path:
+    sys.path.insert(0, str(CORE_PATH))
 
 
 def tenant_dir(tid: str) -> Path:
