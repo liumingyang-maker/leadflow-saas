@@ -16,6 +16,8 @@ sys.path.insert(0, str(BASE.parent / "core"))   # 核心模块
 
 import admin_db
 import tenant_ctx
+sys.path.insert(0, str(BASE / "core"))
+from mailer import send_verification_email, send_reset_email
 
 app = Flask(__name__, template_folder="templates")
 app.secret_key = os.urandom(24)
@@ -85,7 +87,9 @@ def login():
         result = admin_db.login_tenant(email, password)
         if result["ok"]:
             t = result["tenant"]
-            if admin_db.is_trial_expired(t):
+            if not t.get("email_verified", 0):
+                error = "邮箱尚未验证，请查收注册邮件"
+            elif admin_db.is_trial_expired(t):
                 error = "试用期已过，请联系客服开通正式版"
             else:
                 session["tenant_id"] = t["id"]
@@ -117,9 +121,10 @@ def register():
         else:
             result = admin_db.register_tenant(email, password)
             if result["ok"]:
-                session["tenant_id"] = result["tenant_id"]
-                session["tenant_email"] = email
-                return redirect(url_for("onboarding_step", step=1))
+                tid = result["tenant_id"]
+                token = admin_db.create_email_token(tid, email, "verify")
+                send_verification_email(email, token)
+                return redirect(url_for("verify_pending", email=email))
             else:
                 error = result["error"]
     return render_template("auth/register.html", error=error)
@@ -129,6 +134,76 @@ def register():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/verify-pending")
+def verify_pending():
+    email = request.args.get("email", "")
+    return render_template("auth/verify_pending.html", email=email)
+
+
+@app.route("/verify-email/<token>")
+def verify_email(token):
+    result = admin_db.verify_email_token(token, "verify")
+    if not result["ok"]:
+        return render_template("auth/verify_pending.html",
+                               email="", error=result["error"])
+    admin_db.mark_email_verified(result["tenant_id"])
+    session["tenant_id"] = result["tenant_id"]
+    session["tenant_email"] = result["email"]
+    return redirect(url_for("onboarding_step", step=1))
+
+
+@app.route("/resend-verify", methods=["POST"])
+def resend_verify():
+    email = request.form.get("email", "").strip().lower()
+    if email:
+        row = admin_db.get_tenant_by_email(email)
+        if row and not row.get("email_verified", 0):
+            token = admin_db.create_email_token(row["id"], email, "verify")
+            send_verification_email(email, token)
+    return render_template("auth/verify_pending.html",
+                           email=email, resent=True)
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    msg = ""
+    error = ""
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        row = admin_db.get_tenant_by_email(email)
+        if not row:
+            error = "该邮箱未注册"
+        elif not admin_db.can_send_reset_email(email):
+            error = "1小时内已发送过重置邮件，请检查邮箱或稍后再试"
+        else:
+            token = admin_db.create_email_token(row["id"], email, "reset")
+            send_reset_email(email, token)
+            msg = "重置邮件已发送，请查收（30分钟内有效）"
+    return render_template("auth/forgot_password.html", msg=msg, error=error)
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    error = ""
+    result = admin_db.verify_email_token(token, "reset")
+    if not result["ok"]:
+        return render_template("auth/reset_password.html",
+                               token=token, expired=True, error=result["error"])
+    if request.method == "POST":
+        pw = request.form.get("password", "")
+        pw2 = request.form.get("password2", "")
+        if len(pw) < 6:
+            error = "密码至少6位"
+        elif pw != pw2:
+            error = "两次密码不一致"
+        else:
+            admin_db.reset_tenant_password(result["tenant_id"], pw)
+            return redirect(url_for("login") + "?reset=1")
+    return render_template("auth/reset_password.html",
+                           token=token, expired=False, error=error,
+                           email=result["email"])
 
 
 # ─────────────────────────────────────────────────────────
@@ -645,6 +720,14 @@ def admin_suspend(tid):
 @admin_required
 def admin_set_trial(tid):
     admin_db.update_tenant(tid, status="trial")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/tenant/<tid>/reset_password", methods=["POST"])
+@admin_required
+def admin_reset_password(tid):
+    admin_db.reset_tenant_password(tid)
+    flash(f"密码已重置为 reset123，请告知客户登录后修改密码")
     return redirect(url_for("admin_panel"))
 
 

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>验证邮箱 — LeadFlow</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);
+     min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border-radius:12px;padding:40px;width:100%;max-width:420px;
+      box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center}
+.icon{font-size:48px;margin-bottom:20px}
+.brand{font-size:22px;font-weight:800;color:#2563eb;margin-bottom:20px}
+h2{font-size:17px;font-weight:600;color:#111827;margin-bottom:10px}
+p{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:6px}
+.email{color:#2563eb;font-weight:600}
+.divider{border:none;border-top:1px solid #e5e7eb;margin:24px 0}
+.resend-form input{width:100%;padding:9px 12px;border:1px solid #d1d5db;
+                   border-radius:6px;font-size:13px;margin-bottom:8px}
+.btn{width:100%;padding:10px;background:#2563eb;color:#fff;border:none;
+     border-radius:7px;font-size:14px;font-weight:500;cursor:pointer}
+.btn:hover{background:#1d4ed8}
+.success{background:#f0fdf4;color:#16a34a;border:1px solid #86efac;
+         border-radius:6px;padding:10px;font-size:13px;margin-bottom:16px}
+.error{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;
+       border-radius:6px;padding:10px;font-size:13px;margin-bottom:16px}
+.footer{margin-top:20px;font-size:13px;color:#9ca3af}
+.footer a{color:#2563eb}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">LeadFlow</div>
+  <div class="icon">📧</div>
+  <h2>请验证您的邮箱</h2>
+
+  {% if error %}
+  <div class="error">{{ error }}</div>
+  {% elif resent %}
+  <div class="success">验证邮件已重新发送，请查收</div>
+  {% endif %}
+
+  {% if email %}
+  <p>验证邮件已发送至</p>
+  <p class="email">{{ email }}</p>
+  <p style="margin-top:8px">请查收邮件并点击验证链接，链接 30 分钟内有效。</p>
+  {% else %}
+  <p>请查收注册时填写的邮箱，点击验证链接后即可登录。</p>
+  {% endif %}
+
+  <hr class="divider">
+  <p style="margin-bottom:12px;font-size:13px;color:#374151">没收到邮件？重新发送：</p>
+  <form class="resend-form" method="POST" action="/resend-verify">
+    <input type="email" name="email" value="{{ email }}"
+           placeholder="输入注册邮箱" required>
+    <button class="btn" type="submit">重新发送验证邮件</button>
+  </form>
+
+  <div class="footer">
+    <a href="/login">返回登录</a>
+  </div>
+</div>
+</body>
+</html>

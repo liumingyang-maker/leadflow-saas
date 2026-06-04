@@ -1,3 +1,4 @@
+config.py
 tenants/
 *.db
 *.log

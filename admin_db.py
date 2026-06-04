@@ -27,18 +27,19 @@ def init():
     with get_conn() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS tenants (
-                id            TEXT PRIMARY KEY,
-                email         TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                company_name  TEXT DEFAULT '',
-                industry      TEXT DEFAULT '',
-                status        TEXT DEFAULT 'trial',
-                plan          TEXT DEFAULT 'basic',
-                created_at    TEXT,
-                last_login    TEXT,
-                trial_ends    TEXT,
+                id              TEXT PRIMARY KEY,
+                email           TEXT UNIQUE NOT NULL,
+                password_hash   TEXT NOT NULL,
+                company_name    TEXT DEFAULT '',
+                industry        TEXT DEFAULT '',
+                status          TEXT DEFAULT 'trial',
+                plan            TEXT DEFAULT 'basic',
+                created_at      TEXT,
+                last_login      TEXT,
+                trial_ends      TEXT,
                 onboarding_done INTEGER DEFAULT 0,
-                note          TEXT DEFAULT ''
+                note            TEXT DEFAULT '',
+                email_verified  INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS admin_users (
@@ -47,7 +48,23 @@ def init():
                 password_hash TEXT NOT NULL,
                 created_at    TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS email_tokens (
+                token       TEXT PRIMARY KEY,
+                tenant_id   TEXT,
+                email       TEXT,
+                type        TEXT,
+                created_at  TEXT,
+                expires_at  TEXT,
+                used        INTEGER DEFAULT 0
+            );
         """)
+        # 迁移：给老账号补上 email_verified 列（已有账号直接标记为已验证）
+        try:
+            conn.execute("ALTER TABLE tenants ADD COLUMN email_verified INTEGER DEFAULT 0")
+            conn.execute("UPDATE tenants SET email_verified=1")
+        except Exception:
+            pass
     _ensure_admin()
 
 
@@ -151,6 +168,12 @@ def login_admin(email: str, password: str) -> bool:
     return bool(row)
 
 
+def get_tenant_by_email(email: str) -> dict:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM tenants WHERE email=?", (email,)).fetchone()
+    return dict(row) if row else None
+
+
 def get_tenant(tid: str) -> dict:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM tenants WHERE id=?", (tid,)).fetchone()
@@ -175,6 +198,61 @@ def all_tenants() -> list:
             "SELECT * FROM tenants ORDER BY created_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── 邮箱验证 & 密码重置 Token ─────────────────────────────
+
+def create_email_token(tid: str, email: str, token_type: str) -> str:
+    """创建验证/重置 token，有效期30分钟"""
+    token = uuid.uuid4().hex
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=30)
+               ).strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO email_tokens (token, tenant_id, email, type, created_at, expires_at)
+            VALUES (?,?,?,?,?,?)
+        """, (token, tid, email, token_type, _now(), expires))
+    return token
+
+
+def verify_email_token(token: str, token_type: str) -> dict:
+    """验证 token，返回 {ok, tenant_id, email, error}"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM email_tokens WHERE token=? AND type=?", (token, token_type)
+        ).fetchone()
+    if not row:
+        return {"ok": False, "error": "链接无效"}
+    if row["used"]:
+        return {"ok": False, "error": "链接已使用"}
+    if row["expires_at"] < _now():
+        return {"ok": False, "error": "链接已过期，请重新发送"}
+    with get_conn() as conn:
+        conn.execute("UPDATE email_tokens SET used=1 WHERE token=?", (token,))
+    return {"ok": True, "tenant_id": row["tenant_id"], "email": row["email"]}
+
+
+def mark_email_verified(tid: str):
+    with get_conn() as conn:
+        conn.execute("UPDATE tenants SET email_verified=1 WHERE id=?", (tid,))
+
+
+def can_send_reset_email(email: str) -> bool:
+    """1小时内只能发一次重置邮件"""
+    one_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        row = conn.execute("""
+            SELECT id FROM email_tokens
+            WHERE email=? AND type='reset' AND created_at > ? AND used=0
+        """, (email, one_hour_ago)).fetchone()
+    return row is None
+
+
+def reset_tenant_password(tid: str, new_password: str = "reset123"):
+    with get_conn() as conn:
+        conn.execute("UPDATE tenants SET password_hash=? WHERE id=?",
+                     (_hash(new_password), tid))
 
 
 def is_trial_expired(tenant: dict) -> bool:
