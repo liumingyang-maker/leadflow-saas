@@ -19,11 +19,11 @@ import time
 import random
 from typing import Optional
 
-import anthropic
-from log_setup import logger
-
-from config import cfg
-from database import db
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
+from compat import logger, cfg
 
 
 class Scorer:

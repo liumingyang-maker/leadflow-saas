@@ -21,14 +21,18 @@ import uuid
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from typing import Optional
-from log_setup import logger
+try:
+    from log_setup import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
 
-from config import cfg
+DEFAULT_DB_PATH = "leads.db"
 
 
 class Database:
     def __init__(self, db_path: str = None):
-        self.db_path = db_path or cfg.DB_PATH
+        self.db_path = db_path or DEFAULT_DB_PATH
 
     # ─────────────────────────────────────────
     # 连接管理
@@ -347,12 +351,11 @@ class Database:
 
     @staticmethod
     def _calc_grade(score: int) -> str:
-        thresholds = cfg.GRADE_THRESHOLDS
-        if score >= thresholds["A"]:
+        if score >= 80:
             return "A"
-        elif score >= thresholds["B"]:
+        elif score >= 60:
             return "B"
-        elif score >= thresholds["C"]:
+        elif score >= 40:
             return "C"
         return "D"
 

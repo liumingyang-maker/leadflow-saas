@@ -28,10 +28,7 @@ import re
 from typing import Optional
 
 import requests
-from log_setup import logger
-
-from config import cfg
-from database import db
+from compat import logger, cfg
 
 
 HEADERS = {

@@ -26,10 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-from log_setup import logger
-
-from config import cfg
-from module2_cleaner import cleaner
+from compat import logger, cfg
 
 
 # ──────────────────────────────────────────────────────────

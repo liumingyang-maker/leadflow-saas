@@ -19,10 +19,7 @@ from typing import Optional
 
 import pycountry
 from fuzzywuzzy import fuzz
-from log_setup import logger
-
-from config import cfg
-from database import db
+from compat import logger, cfg
 
 
 # ─────────────────────────────────────────────────────────────
