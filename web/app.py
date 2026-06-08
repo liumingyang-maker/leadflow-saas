@@ -1535,6 +1535,43 @@ def admin_note(tid):
     return redirect(url_for("admin_panel"))
 
 
+@app.route("/admin/tenant/create", methods=["POST"])
+@admin_required
+def admin_create_tenant_route():
+    email    = request.form.get("email", "").strip().lower()[:120]
+    password = request.form.get("password", "").strip()[:120]
+    company  = request.form.get("company_name", "").strip()[:100]
+    status   = request.form.get("status", "active")
+    if not email or not password:
+        flash("邮箱和密码必填")
+        return redirect(url_for("admin_panel"))
+    r = admin_db.admin_create_tenant(email, password, company, status)
+    flash(f"✅ 账号已创建：{email}（已激活，可直接登录）"
+          if r["ok"] else f"创建失败：{r['error']}")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/tenant/<tid>/edit", methods=["POST"])
+@admin_required
+def admin_edit_tenant(tid):
+    email    = request.form.get("email", "").strip().lower()[:120]
+    company  = request.form.get("company_name", "").strip()[:100]
+    password = request.form.get("password", "").strip()[:120]
+    r = admin_db.admin_update_tenant(tid, email=email or None,
+                                     company_name=company,
+                                     password=password or None)
+    flash("✅ 账号已更新" if r["ok"] else f"更新失败：{r['error']}")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/tenant/<tid>/delete", methods=["POST"])
+@admin_required
+def admin_delete_tenant(tid):
+    admin_db.delete_tenant(tid)
+    flash("🗑️ 账号及其全部数据已删除")
+    return redirect(url_for("admin_panel"))
+
+
 # ─────────────────────────────────────────────────────────
 # 工具函数
 # ─────────────────────────────────────────────────────────

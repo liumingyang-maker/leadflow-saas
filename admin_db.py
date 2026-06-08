@@ -246,6 +246,81 @@ def all_tenants() -> list:
     return [dict(r) for r in rows]
 
 
+def admin_create_tenant(email: str, password: str, company_name: str = "",
+                        status: str = "active") -> dict:
+    """管理员手动新建账号：直接激活、免邮箱验证（用于收款后开账号）。"""
+    email = (email or "").strip().lower()
+    if not email or not password:
+        return {"ok": False, "error": "邮箱和密码必填"}
+    if status not in ("active", "trial"):
+        status = "active"
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM tenants WHERE email=?", (email,)).fetchone()
+        if existing:
+            return {"ok": False, "error": "该邮箱已存在"}
+        tid = uuid.uuid4().hex[:16]
+        trial_ends = (datetime.now(timezone.utc) + timedelta(days=14)
+                      ).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("""
+            INSERT INTO tenants
+            (id, email, password_hash, company_name, status,
+             created_at, trial_ends, email_verified)
+            VALUES (?,?,?,?,?,?,?,1)
+        """, (tid, email, _hash(password), company_name.strip(),
+              status, _now(), trial_ends))
+    tenant_dir = DATA_DIR / "tenants" / tid
+    tenant_dir.mkdir(parents=True, exist_ok=True)
+    _init_tenant_config(tid)
+    if company_name.strip():
+        import json
+        cfg_path = DATA_DIR / "tenants" / tid / "config.json"
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            cfg["company_name"] = company_name.strip()
+            cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2),
+                                encoding="utf-8")
+        except Exception:
+            pass
+    return {"ok": True, "tenant_id": tid}
+
+
+def delete_tenant(tid: str) -> dict:
+    """彻底删除租户：账号记录 + 关联数据 + 数据目录（不可恢复）。"""
+    import shutil
+    with get_conn() as conn:
+        conn.execute("DELETE FROM tenants WHERE id=?", (tid,))
+        conn.execute("DELETE FROM email_tokens WHERE tenant_id=?", (tid,))
+        conn.execute("DELETE FROM inbound_tokens WHERE tenant_id=?", (tid,))
+        conn.execute("DELETE FROM followups WHERE tenant_id=?", (tid,))
+        conn.execute("DELETE FROM email_tracking WHERE tenant_id=?", (tid,))
+    tenant_dir = DATA_DIR / "tenants" / tid
+    if tenant_dir.exists():
+        shutil.rmtree(tenant_dir, ignore_errors=True)
+    return {"ok": True}
+
+
+def admin_update_tenant(tid: str, email: str = None,
+                        company_name: str = None, password: str = None) -> dict:
+    """管理员编辑账号：改邮箱 / 公司名 / 密码（任一可选，留空不动）。"""
+    with get_conn() as conn:
+        if email:
+            email = email.strip().lower()
+            dup = conn.execute(
+                "SELECT id FROM tenants WHERE email=? AND id<>?",
+                (email, tid)).fetchone()
+            if dup:
+                return {"ok": False, "error": "该邮箱已被其他账号使用"}
+            conn.execute("UPDATE tenants SET email=? WHERE id=?", (email, tid))
+        if company_name is not None:
+            conn.execute("UPDATE tenants SET company_name=? WHERE id=?",
+                         (company_name.strip(), tid))
+        if password:
+            conn.execute("UPDATE tenants SET password_hash=? WHERE id=?",
+                         (_hash(password), tid))
+    return {"ok": True}
+
+
 # ── 邮箱验证 & 密码重置 ────────────────────────────────────
 
 def create_email_token(tid: str, email: str, token_type: str) -> str:
