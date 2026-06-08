@@ -1,0 +1,135 @@
+{% extends "app/base.html" %}
+{% block title %}独立站询盘{% endblock %}
+{% block page_title %}独立站询盘{% endblock %}
+{% block content %}
+<div class="content" style="max-width:780px">
+
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:#1e40af;line-height:1.7">
+    💡 <b>这是什么？</b>把这段代码放到你自己的官网/独立站（Shopify、WordPress、自建站都行），
+    访客在你网站上填的「联系/询盘表单」就会<b>自动变成一条客户线索</b>进入这里——
+    这是主动找上门的高质量客户，比开发信质量高得多。
+  </div>
+
+  <!-- 专属接收地址 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:10px;color:#374151">① 你的专属接收地址</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="ep" value="{{ endpoint }}" readonly
+             style="flex:1;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;background:#f8fafc">
+      <button onclick="copyVal('ep',this)"
+              style="padding:9px 16px;border:none;background:#2563eb;color:#fff;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap">复制</button>
+    </div>
+    <p style="font-size:12px;color:#9ca3af;margin-top:8px">
+      这个地址是你专属的密钥，别公开发给无关的人。万一泄露可
+      <form method="POST" action="/inbound/regenerate" style="display:inline"
+            onsubmit="return confirm('重置后旧地址立即失效，已嵌入网站的代码需要替换成新地址，确定？')">
+        <button type="submit" style="background:none;border:none;color:#dc2626;font-size:12px;cursor:pointer;padding:0;text-decoration:underline">重置地址</button>
+      </form>
+    </p>
+  </div>
+
+  <!-- 方式一：JS 片段 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:6px;color:#374151">
+      ② 方式一（推荐）：嵌入一段代码，访客留在你网站
+    </h3>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:10px;line-height:1.7">
+      把下面代码贴到你网站每个页面的 <code>&lt;/body&gt;</code> 之前，
+      并给你的询盘表单 <code>&lt;form&gt;</code> 标签加一个 <code>data-leadflow</code> 属性即可。
+      不影响你表单原本的提交行为。
+    </p>
+    <pre id="snippet" style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;font-size:12px;overflow-x:auto;line-height:1.6"><code>&lt;script&gt;
+(function(){
+  var ENDPOINT = "{{ endpoint }}";
+  document.querySelectorAll('form[data-leadflow]').forEach(function(form){
+    form.addEventListener('submit', function(){
+      var obj = {}; new FormData(form).forEach(function(v,k){ obj[k]=v; });
+      fetch(ENDPOINT, {method:'POST', keepalive:true,
+        headers:{'Content-Type':'application/json'}, body:JSON.stringify(obj)
+      }).catch(function(){});
+    });
+  });
+})();
+&lt;/script&gt;</code></pre>
+    <button onclick="copyText('snippet',this)"
+            style="margin-top:10px;padding:8px 16px;border:none;background:#2563eb;color:#fff;border-radius:6px;font-size:13px;cursor:pointer">复制代码</button>
+  </div>
+
+  <!-- 字段对照 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:6px;color:#374151">③ 表单字段命名（让数据对上号）</h3>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:10px">
+      你表单里输入框的 <code>name</code> 用下面这些词，系统就能自动识别（大小写都行，<b>邮箱或电话至少有一个</b>）：
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr style="color:#9ca3af;text-align:left"><th style="padding:5px 8px">对应客户字段</th><th>表单 name 可用</th></tr>
+      {% for label, names in [
+        ('邮箱','email / mail / e-mail'),
+        ('姓名','name / contact_name / fullname'),
+        ('公司','company / company_name / organization'),
+        ('电话/WhatsApp','phone / tel / mobile / whatsapp'),
+        ('国家','country'),
+        ('留言内容','message / comment / inquiry'),
+        ('网址','website / url'),
+      ] %}
+      <tr style="border-top:1px solid #f1f5f9"><td style="padding:6px 8px;font-weight:500">{{ label }}</td><td style="font-family:monospace;color:#475569">{{ names }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <!-- 方式二：纯 HTML 表单 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:6px;color:#374151">
+      ④ 方式二：没有现成表单？直接用这个
+    </h3>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:10px">把这段贴到网页里就是一个能用的询盘表单（适合不会写代码的情况）。</p>
+    <pre id="formhtml" style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;font-size:12px;overflow-x:auto;line-height:1.6"><code>&lt;form data-leadflow&gt;
+  &lt;input name="name" placeholder="Your Name"&gt;
+  &lt;input name="email" placeholder="Email" required&gt;
+  &lt;input name="company" placeholder="Company"&gt;
+  &lt;input name="phone" placeholder="Phone / WhatsApp"&gt;
+  &lt;input name="country" placeholder="Country"&gt;
+  &lt;textarea name="message" placeholder="Your inquiry"&gt;&lt;/textarea&gt;
+  &lt;button type="submit"&gt;Send Inquiry&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+    <button onclick="copyText('formhtml',this)"
+            style="margin-top:10px;padding:8px 16px;border:none;background:#2563eb;color:#fff;border-radius:6px;font-size:13px;cursor:pointer">复制表单</button>
+  </div>
+
+  <!-- 测试 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:6px;color:#374151">⑤ 测试一下</h3>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:10px">点一下发送一条测试询盘，然后去「客户列表」看是否多了一条来源为<b>独立站询盘</b>的线索。</p>
+    <button onclick="sendTest(this)"
+            style="padding:8px 18px;border:1px solid #2563eb;background:#fff;color:#2563eb;border-radius:6px;font-size:13px;cursor:pointer">发送测试询盘</button>
+    <span id="testResult" style="font-size:13px;margin-left:10px"></span>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function copyVal(id, btn){
+  const el=document.getElementById(id); el.select();
+  navigator.clipboard.writeText(el.value).then(()=>{ btn.textContent='已复制'; setTimeout(()=>btn.textContent='复制',1500); });
+}
+function copyText(id, btn){
+  const txt=document.getElementById(id).innerText;
+  navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent='已复制'; setTimeout(()=>btn.textContent=o,1500); });
+}
+function sendTest(btn){
+  const res=document.getElementById('testResult');
+  btn.disabled=true; res.style.color='#6b7280'; res.textContent='发送中…';
+  fetch("{{ endpoint }}", {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name:'Test Buyer', email:'testbuyer@example-importer.com',
+      company:'Test Importer Co', country:'Nigeria', phone:'+234800000000',
+      message:'This is a test inquiry from LeadFlow inbound widget.'})
+  }).then(r=>r.json()).then(d=>{
+    if(d.ok){ res.style.color='#166534'; res.textContent='✅ 测试询盘已入库，去「客户列表」查看（公司名 Test Importer Co）'; }
+    else { res.style.color='#991b1b'; res.textContent='❌ '+(d.error||'失败'); }
+  }).catch(e=>{ res.style.color='#991b1b'; res.textContent='❌ '+e; })
+    .finally(()=>{ btn.disabled=false; });
+}
+</script>
+{% endblock %}

@@ -1,11 +1,8 @@
 {% extends "app/base.html" %}
 {% block title %}{{ lead.company_name }}{% endblock %}
+{% block page_title %}<span class="grade grade-{{ lead.grade }}" style="margin-right:8px">{{ lead.grade }}</span>{{ lead.company_name }}{% endblock %}
+{% block topbar_actions %}<a href="/leads" class="btn btn-sm">← 返回列表</a>{% endblock %}
 {% block content %}
-<div class="topbar">
-  <a href="/leads" style="font-size:13px;color:#6b7280;margin-right:8px">← 返回列表</a>
-  <h1>{{ lead.company_name }}</h1>
-  <span class="grade grade-{{ lead.grade }}" style="font-size:16px;width:28px;height:28px;line-height:28px">{{ lead.grade }}</span>
-</div>
 <div class="content" style="max-width:900px">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
 
@@ -57,6 +54,77 @@
 
   </div>
 
+  <!-- 智能工具：找邮箱 / 验真 / 深度调查 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:4px;color:#6b7280">🔎 智能工具</h3>
+    <p style="font-size:12px;color:#9ca3af;margin-bottom:14px">
+      自动从官网、搜索引擎、Hunter、LinkedIn 等公开渠道补全联系方式并核实公司真实性。
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button id="btnEnrich" onclick="runTool('enrich',this)"
+              style="padding:8px 16px;border-radius:6px;border:none;background:#2563eb;
+                     color:#fff;font-size:13px;cursor:pointer;font-weight:500">
+        📧 一键找邮箱
+      </button>
+      <button id="btnVerify" onclick="runTool('verify',this)"
+              style="padding:8px 16px;border-radius:6px;border:1px solid #2563eb;background:#fff;
+                     color:#2563eb;font-size:13px;cursor:pointer;font-weight:500">
+        ✅ 验证真实性
+      </button>
+      <button id="btnInvestigate" onclick="runTool('investigate',this)"
+              style="padding:8px 16px;border-radius:6px;border:1px solid #7c3aed;background:#fff;
+                     color:#7c3aed;font-size:13px;cursor:pointer;font-weight:500">
+        🕵️ 深度调查
+      </button>
+    </div>
+    <div id="toolResult" style="display:none;margin-top:16px;border-top:1px solid #f1f5f9;padding-top:14px"></div>
+  </div>
+
+  <!-- 触达客户：发开发信 / WhatsApp -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#6b7280">✉ 触达客户</h3>
+
+    <!-- 邮件 -->
+    {% if not mail_channel_ready %}
+    <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:12px">
+      ⚠️ 还没配置发信通道，去 <a href="/settings" style="color:#2563eb">设置 → 给买家发开发信</a> 填好后才能发送。
+    </div>
+    {% endif %}
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      <label style="font-size:13px;color:#6b7280">选模板</label>
+      <select id="tplPick" onchange="applyTpl()"
+              style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        {% for key, t in templates.items() %}
+        <option value="{{ key }}">{{ t.display_name }}</option>
+        {% endfor %}
+      </select>
+      <span style="font-size:12px;color:#9ca3af">收件人：{{ lead.email or '（无邮箱，请先一键找邮箱）' }}</span>
+    </div>
+    <input id="mailSubject" placeholder="邮件主题"
+           style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px">
+    <textarea id="mailBody" rows="9"
+              style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical;font-family:inherit"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
+      <button id="btnSendMail" onclick="sendMail(this)"
+              style="padding:8px 18px;border-radius:6px;border:none;background:#2563eb;color:#fff;
+                     font-size:13px;font-weight:500;cursor:pointer">📧 验证并发送</button>
+      {% if lead.phone %}
+      <button onclick="sendWhatsApp(this)"
+              style="padding:8px 18px;border-radius:6px;border:1px solid #16a34a;background:#fff;
+                     color:#16a34a;font-size:13px;font-weight:500;cursor:pointer">💬 通过 WhatsApp 联系</button>
+      {% if wa_api_ready %}
+      <button onclick="sendWhatsAppApi(this)"
+              style="padding:8px 18px;border-radius:6px;border:none;background:#16a34a;
+                     color:#fff;font-size:13px;font-weight:500;cursor:pointer">⚡ 自动发送(官方API)</button>
+      {% endif %}
+      <span style="font-size:12px;color:#9ca3af">号码：{{ lead.phone }}</span>
+      {% else %}
+      <span style="font-size:12px;color:#9ca3af">💬 WhatsApp：该客户没有电话号码，补全后可用</span>
+      {% endif %}
+      <span id="mailResult" style="font-size:12px"></span>
+    </div>
+  </div>
+
   <!-- 状态更新 -->
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px">
     <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#6b7280">状态 & 备注</h3>
@@ -87,6 +155,33 @@
     </div>
   </div>
 
+  {% if email_tracking %}
+  <!-- 邮件追踪 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#6b7280">📨 邮件追踪</h3>
+    {% for t in email_tracking %}
+    <div style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:13px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+      <span style="color:#9ca3af;font-size:11px">{{ t.sent_at[:16] if t.sent_at else '' }}</span>
+      <span style="font-weight:500;flex:1">{{ t.subject or '(无主题)' }}</span>
+      {% if t.opened_at %}
+      <span style="background:#dcfce7;color:#166534;font-size:11px;padding:2px 8px;border-radius:8px">
+        ✅ 已打开 {{ t.open_count }} 次
+      </span>
+      {% else %}
+      <span style="background:#f3f4f6;color:#6b7280;font-size:11px;padding:2px 8px;border-radius:8px">未打开</span>
+      {% endif %}
+      {% if t.click_count and t.click_count > 0 %}
+      <span style="background:#dbeafe;color:#1e40af;font-size:11px;padding:2px 8px;border-radius:8px">🔗 点击 {{ t.click_count }} 次</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <p style="font-size:11px;color:#9ca3af;margin-top:10px">
+      追踪仅在「邮箱 SMTP」通道下由系统像素统计；用专业 ESP 时请在 ESP 后台查看打开率。
+      本地测试时买家邮件客户端无法访问像素，部署到公网域名后才会真实统计。
+    </p>
+  </div>
+  {% endif %}
+
   {% if history %}
   <!-- 联系历史 -->
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px">
@@ -104,4 +199,165 @@
   {% endif %}
 
 </div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+const LEAD_ID = "{{ lead.id }}";
+const _toolLabels = {enrich:'找邮箱', verify:'验证真实性', investigate:'深度调查'};
+const TEMPLATES = {{ templates|tojson }};
+const LEAD_EMAIL = {{ (lead.email or '')|tojson }};
+const LEAD_PHONE = {{ (lead.phone or '')|tojson }};
+
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── 发开发信 ──
+function applyTpl(){
+  const key = document.getElementById('tplPick').value;
+  const t = TEMPLATES[key]; if(!t) return;
+  document.getElementById('mailSubject').value = t.subject || '';
+  document.getElementById('mailBody').value = t.body || '';
+}
+function sendMail(btn){
+  const subject = document.getElementById('mailSubject').value.trim();
+  const body = document.getElementById('mailBody').value.trim();
+  const res = document.getElementById('mailResult');
+  if(!LEAD_EMAIL){ res.style.color='#991b1b'; res.textContent='该客户没有邮箱，请先「一键找邮箱」'; return; }
+  if(!subject || !body){ res.style.color='#991b1b'; res.textContent='主题和正文不能为空'; return; }
+  const old = btn.textContent; btn.disabled=true; btn.style.opacity=.6; btn.textContent='⏳ 发送中…';
+  res.style.color='#6b7280'; res.textContent='正在验证邮箱并发送…';
+  fetch('/lead/'+LEAD_ID+'/send-email', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({subject, body})
+  }).then(r=>r.json()).then(d=>{
+    if(d.ok){ res.style.color='#166534'; res.textContent='✅ '+(d.info||'已发送'); toast('开发信已发送','ok'); }
+    else { res.style.color='#991b1b'; res.textContent='❌ '+(d.error||'发送失败'); }
+  }).catch(e=>{ res.style.color='#991b1b'; res.textContent='❌ '+e; })
+    .finally(()=>{ btn.disabled=false; btn.style.opacity=1; btn.textContent=old; });
+}
+
+// ── WhatsApp 点击触达（B 方案：跳转 wa.me 手动发，零成本合规）──
+function sendWhatsApp(btn){
+  if(!LEAD_PHONE){ toast('该客户没有电话号码','err'); return; }
+  const num = LEAD_PHONE.replace(/[^0-9]/g,'');
+  // 用正文前几行作为 WhatsApp 开场（避免链接过长）
+  const body = document.getElementById('mailBody').value.trim()
+               || (TEMPLATES[Object.keys(TEMPLATES)[0]]||{}).body || '';
+  const msg = body.split('\n').slice(0,6).join('\n').slice(0,600);
+  window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msg), '_blank');
+  // 回报记录一条 whatsapp 外联
+  fetch('/lead/'+LEAD_ID+'/log-whatsapp', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({message: msg})
+  }).then(r=>r.json()).then(d=>{ if(d.ok) toast('已记录 WhatsApp 触达','ok'); });
+}
+
+// WhatsApp 官方API自动发送（A 方案）
+function sendWhatsAppApi(btn){
+  const body = document.getElementById('mailBody').value.trim()
+               || (TEMPLATES[Object.keys(TEMPLATES)[0]]||{}).body || '';
+  const msg = body.split('\n').slice(0,8).join('\n').slice(0,1000);
+  if(!confirm('通过官方 API 自动发送 WhatsApp 给该客户？')) return;
+  const old=btn.textContent; btn.disabled=true; btn.style.opacity=.6; btn.textContent='⏳ 发送中…';
+  fetch('/lead/'+LEAD_ID+'/send-whatsapp-api', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({message: msg})
+  }).then(r=>r.json()).then(d=>{
+    if(d.ok) toast('✅ '+(d.info||'已发送'),'ok');
+    else toast('❌ '+(d.error||'发送失败'),'err');
+  }).catch(e=>toast('❌ '+e,'err'))
+    .finally(()=>{ btn.disabled=false; btn.style.opacity=1; btn.textContent=old; });
+}
+
+// 初始化：默认套用第一个模板
+document.addEventListener('DOMContentLoaded', applyTpl);
+
+function runTool(kind, btn){
+  const panel = document.getElementById('toolResult');
+  const old = btn.textContent;
+  btn.disabled = true; btn.style.opacity = .6;
+  btn.textContent = '⏳ 处理中…';
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="color:#6b7280;font-size:13px">正在'+_toolLabels[kind]+'，请稍候（联网查询，约 10~30 秒）…</div>';
+
+  fetch('/lead/'+LEAD_ID+'/'+kind, {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{
+      if(!d.ok){ panel.innerHTML = '<div style="color:#991b1b;font-size:13px">失败：'+esc(d.error||'未知错误')+'</div>'; return; }
+      if(kind==='enrich')      renderEnrich(d.result, panel);
+      else if(kind==='verify') renderVerify(d.result, panel);
+      else                     renderInvestigate(d.result, panel);
+    })
+    .catch(e=>{ panel.innerHTML = '<div style="color:#991b1b;font-size:13px">请求出错：'+esc(''+e)+'</div>'; })
+    .finally(()=>{ btn.disabled=false; btn.style.opacity=1; btn.textContent=old; });
+}
+
+function renderEnrich(r, panel){
+  let h = '<div style="font-size:13px;font-weight:600;margin-bottom:10px">📧 '+esc(r.summary)+'</div>';
+  if(r.saved){ h += '<div style="background:#dcfce7;color:#166534;padding:6px 10px;border-radius:6px;font-size:12px;margin-bottom:10px">✅ 已自动把最佳邮箱填入该客户，刷新后可见</div>'; }
+  if(r.emails && r.emails.length){
+    h += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">';
+    h += '<tr style="color:#9ca3af;text-align:left"><th style="padding:4px 6px">邮箱</th><th>姓名/职位</th><th>来源</th><th>可信度</th></tr>';
+    r.emails.forEach(e=>{
+      h += '<tr style="border-top:1px solid #f1f5f9">'
+         + '<td style="padding:5px 6px"><a href="mailto:'+esc(e.email)+'" style="color:#2563eb">'+esc(e.email)+'</a></td>'
+         + '<td>'+esc([e.name,e.title].filter(Boolean).join(' · ')||'-')+'</td>'
+         + '<td>'+esc(e.source)+'</td>'
+         + '<td>'+(e.confidence||0)+'%</td></tr>';
+    });
+    h += '</table>';
+  }
+  if(r.phones && r.phones.length){ h += '<div style="font-size:12px;margin-bottom:6px"><b>电话：</b>'+r.phones.map(esc).join('，')+'</div>'; }
+  if(r.socials && Object.keys(r.socials).length){
+    h += '<div style="font-size:12px"><b>社交：</b>'+Object.entries(r.socials).map(([k,v])=>'<a href="'+esc(v)+'" target="_blank" style="color:#2563eb;margin-right:8px">'+esc(k)+'</a>').join('')+'</div>';
+  }
+  panel.innerHTML = h;
+}
+
+function renderVerify(r, panel){
+  const color = r.score>=70?'#16a34a':r.score>=45?'#ca8a04':'#dc2626';
+  let h = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'
+        + '<div style="width:52px;height:52px;border-radius:50%;border:4px solid '+color+';display:flex;align-items:center;justify-content:center;font-weight:700;color:'+color+'">'+r.score+'</div>'
+        + '<div style="font-size:13px;font-weight:600">'+esc(r.verdict)+'</div></div>';
+  (r.signals||[]).forEach(s=>{
+    const ic = s.ok===true?'✅':s.ok===false?'❌':'➖';
+    h += '<div style="font-size:13px;margin-bottom:6px">'+ic+' <b>'+esc(s.label)+'</b>'
+       + (s.detail?'<span style="color:#6b7280"> — '+esc(s.detail)+'</span>':'')+'</div>';
+  });
+  panel.innerHTML = h;
+}
+
+function renderInvestigate(r, panel){
+  let h = '<div style="font-size:13px;font-weight:600;margin-bottom:12px">🕵️ '+esc(r.summary)+'</div>';
+  const v = r.verification;
+  if(v && v.ok){
+    const color = v.score>=70?'#16a34a':v.score>=45?'#ca8a04':'#dc2626';
+    h += '<div style="font-size:13px;margin-bottom:10px"><b>真实性：</b><span style="color:'+color+';font-weight:600">'+v.score+'/100</span> — '+esc(v.verdict)+'</div>';
+  }
+  const c = r.contacts;
+  if(c && c.emails && c.emails.length){
+    h += '<div style="font-size:13px;margin-bottom:4px"><b>📧 邮箱：</b></div><div style="margin-bottom:10px">';
+    c.emails.slice(0,5).forEach(e=>{ h += '<a href="mailto:'+esc(e.email)+'" style="color:#2563eb;font-size:12px;margin-right:10px">'+esc(e.email)+'</a>'; });
+    h += '</div>';
+  }
+  if(r.people && r.people.length){
+    h += '<div style="font-size:13px;margin-bottom:4px"><b>👔 LinkedIn 决策人：</b></div>';
+    r.people.forEach(p=>{
+      h += '<div style="font-size:12px;margin-bottom:5px;padding-left:6px">'
+         + '<a href="'+esc(p.linkedin_url)+'" target="_blank" style="color:#2563eb;font-weight:600">'+esc(p.name)+'</a>'
+         + (p.role?' <span style="color:#6b7280">— '+esc(p.role)+'</span>':'')+'</div>';
+    });
+    h += '<div style="height:8px"></div>';
+  }
+  if(r.mentions && r.mentions.length){
+    h += '<div style="font-size:13px;margin-bottom:4px"><b>🌐 网络提及：</b></div>';
+    r.mentions.slice(0,5).forEach(m=>{
+      h += '<div style="font-size:12px;margin-bottom:5px;padding-left:6px">'
+         + '<a href="'+esc(m.url)+'" target="_blank" style="color:#2563eb">'+esc(m.title)+'</a>'
+         + (m.snippet?'<div style="color:#9ca3af">'+esc(m.snippet)+'</div>':'')+'</div>';
+    });
+  }
+  panel.innerHTML = h;
+}
+</script>
 {% endblock %}

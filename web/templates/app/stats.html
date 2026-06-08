@@ -1,7 +1,7 @@
 {% extends "app/base.html" %}
 {% block title %}数据统计{% endblock %}
+{% block page_title %}数据统计{% endblock %}
 {% block content %}
-<div class="topbar"><h1>数据统计</h1></div>
 <div class="content">
   <div class="stat-grid">
     {% for label, val, color in [
@@ -20,6 +20,26 @@
     </div>
     {% endfor %}
   </div>
+
+  {% if email_stats and email_stats.sent %}
+  <div style="margin-top:20px">
+    <h3 style="font-size:14px;font-weight:600;color:#374151;margin-bottom:10px">📨 开发信触达效果（SMTP 通道统计）</h3>
+    <div class="stat-grid">
+      {% for label, val, color in [
+        ('已发送', email_stats.sent, '#111827'),
+        ('已打开', email_stats.opened, '#16a34a'),
+        ('打开率', email_stats.open_rate ~ '%', '#16a34a'),
+        ('有点击', email_stats.clicked, '#2563eb'),
+        ('点击率', email_stats.click_rate ~ '%', '#2563eb'),
+      ] %}
+      <div class="stat-card">
+        <div class="label">{{ label }}</div>
+        <div class="value" style="color:{{ color }}">{{ val }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
   {% if history %}
   <div class="table-wrap" style="margin-top:16px">

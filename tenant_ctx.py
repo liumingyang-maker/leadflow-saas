@@ -10,6 +10,9 @@ from pathlib import Path
 
 BASE = Path(__file__).parent
 
+# 数据目录：默认项目根目录；部署挂载持久卷时用环境变量 DATA_DIR 指向卷（如 /data）
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE)))
+
 # 核心模块路径（core/ 目录）
 CORE_PATH = Path(__file__).parent / "core"
 if str(CORE_PATH) not in sys.path:
@@ -17,7 +20,7 @@ if str(CORE_PATH) not in sys.path:
 
 
 def tenant_dir(tid: str) -> Path:
-    return BASE / "tenants" / tid
+    return DATA_DIR / "tenants" / tid
 
 
 def load_config(tid: str) -> dict:

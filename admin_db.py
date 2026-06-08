@@ -10,7 +10,10 @@ import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-ADMIN_DB_PATH = Path(__file__).parent / "admin.db"
+# 数据目录：默认项目根目录；部署挂载持久卷时用环境变量 DATA_DIR（如 /data）
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+ADMIN_DB_PATH = DATA_DIR / "admin.db"
 
 
 def _now():
@@ -58,6 +61,41 @@ def init():
                 created_at  TEXT,
                 expires_at  TEXT,
                 used        INTEGER DEFAULT 0
+            );
+
+            -- 独立站询盘插件：每租户一个专属 token，用于公开接收接口反查租户
+            CREATE TABLE IF NOT EXISTS inbound_tokens (
+                token       TEXT PRIMARY KEY,
+                tenant_id   TEXT UNIQUE NOT NULL,
+                created_at  TEXT
+            );
+
+            -- 自动跟进序列：客户发了开发信后，没回复就到点自动发下一封
+            CREATE TABLE IF NOT EXISTS followups (
+                id           TEXT PRIMARY KEY,
+                tenant_id    TEXT NOT NULL,
+                lead_id      TEXT NOT NULL,
+                step         INTEGER DEFAULT 0,
+                next_send_at TEXT,
+                status       TEXT DEFAULT 'active',
+                created_at   TEXT,
+                updated_at   TEXT
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_followup_lead
+                ON followups(tenant_id, lead_id);
+
+            -- 邮件打开/点击追踪：每封通过 SMTP 通道发出的开发信一条记录
+            CREATE TABLE IF NOT EXISTS email_tracking (
+                tracking_id TEXT PRIMARY KEY,
+                tenant_id   TEXT NOT NULL,
+                lead_id     TEXT,
+                subject     TEXT,
+                sent_at     TEXT,
+                opened_at   TEXT,
+                open_count  INTEGER DEFAULT 0,
+                last_open   TEXT,
+                click_count INTEGER DEFAULT 0,
+                last_click  TEXT
             );
         """)
         try:
@@ -116,7 +154,7 @@ def register_tenant(email: str, password: str) -> dict:
             (id, email, password_hash, status, created_at, trial_ends)
             VALUES (?,?,?,?,?,?)
         """, (tid, email, _hash(password), "trial", _now(), trial_ends))
-    tenant_dir = Path(__file__).parent / "tenants" / tid
+    tenant_dir = DATA_DIR / "tenants" / tid
     tenant_dir.mkdir(parents=True, exist_ok=True)
     _init_tenant_config(tid)
     return {"ok": True, "tenant_id": tid}
@@ -124,7 +162,7 @@ def register_tenant(email: str, password: str) -> dict:
 
 def _init_tenant_config(tid: str):
     import json
-    cfg_path = Path(__file__).parent / "tenants" / tid / "config.json"
+    cfg_path = DATA_DIR / "tenants" / tid / "config.json"
     if not cfg_path.exists():
         default = {
             "company_name": "", "industry": "", "product_name": "",
@@ -269,6 +307,169 @@ def is_trial_expired(tenant: dict) -> bool:
     if not trial_ends:
         return False
     return trial_ends < _now()
+
+
+# ── 独立站询盘 token ──────────────────────────────────────
+
+def get_or_create_inbound_token(tid: str) -> str:
+    """返回租户的独立站询盘专属 token，不存在则生成。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT token FROM inbound_tokens WHERE tenant_id=?", (tid,)
+        ).fetchone()
+        if row:
+            return row["token"]
+        token = "in_" + uuid.uuid4().hex
+        conn.execute(
+            "INSERT INTO inbound_tokens (token, tenant_id, created_at) VALUES (?,?,?)",
+            (token, tid, _now()))
+        return token
+
+
+def regenerate_inbound_token(tid: str) -> str:
+    """重置租户的询盘 token（旧的失效，用于泄露后更换）。"""
+    token = "in_" + uuid.uuid4().hex
+    with get_conn() as conn:
+        conn.execute("DELETE FROM inbound_tokens WHERE tenant_id=?", (tid,))
+        conn.execute(
+            "INSERT INTO inbound_tokens (token, tenant_id, created_at) VALUES (?,?,?)",
+            (token, tid, _now()))
+    return token
+
+
+def get_tid_by_inbound_token(token: str):
+    """公开接收接口用：按 token 反查租户 id，找不到返回 None。"""
+    if not token or not token.startswith("in_"):
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT tenant_id FROM inbound_tokens WHERE token=?", (token,)
+        ).fetchone()
+    return row["tenant_id"] if row else None
+
+
+# ── 自动跟进序列 ──────────────────────────────────────────
+
+def enroll_followup(tenant_id: str, lead_id: str, next_send_at: str) -> None:
+    """客户发了首封开发信后登记进跟进序列；已存在则重置为 active 第0步。"""
+    now = _now()
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO followups (id, tenant_id, lead_id, step, next_send_at,
+                                   status, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?)
+            ON CONFLICT(tenant_id, lead_id) DO UPDATE SET
+                step=0, next_send_at=excluded.next_send_at,
+                status='active', updated_at=excluded.updated_at
+        """, (uuid.uuid4().hex, tenant_id, lead_id, 0, next_send_at,
+              "active", now, now))
+
+
+def get_due_followups(limit: int = 200) -> list:
+    """返回所有到点该发的 active 跟进（next_send_at <= 现在）。"""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT * FROM followups
+            WHERE status='active' AND next_send_at <= ?
+            ORDER BY next_send_at ASC LIMIT ?
+        """, (_now(), limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def advance_followup(fid: str, step: int, next_send_at: str) -> None:
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE followups SET step=?, next_send_at=?, updated_at=? WHERE id=?
+        """, (step, next_send_at, _now(), fid))
+
+
+def finish_followup(fid: str, status: str = "done") -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE followups SET status=?, updated_at=? WHERE id=?",
+                     (status, _now(), fid))
+
+
+def postpone_followup(fid: str, next_send_at: str) -> None:
+    """发送失败时把下次发送时间往后推，稍后重试。"""
+    with get_conn() as conn:
+        conn.execute("UPDATE followups SET next_send_at=?, updated_at=? WHERE id=?",
+                     (next_send_at, _now(), fid))
+
+
+def cancel_followups_for_lead(tenant_id: str, lead_id: str) -> None:
+    """客户已回复/已成交/已拒绝时，停止对其的自动跟进。"""
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE followups SET status='stopped', updated_at=?
+            WHERE tenant_id=? AND lead_id=? AND status='active'
+        """, (_now(), tenant_id, lead_id))
+
+
+# ── 邮件打开/点击追踪 ─────────────────────────────────────
+
+def create_tracking(tenant_id: str, lead_id: str, subject: str) -> str:
+    """发信时创建一条追踪记录，返回 tracking_id。"""
+    tracking_id = "trk_" + uuid.uuid4().hex
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO email_tracking (tracking_id, tenant_id, lead_id, subject, sent_at)
+            VALUES (?,?,?,?,?)
+        """, (tracking_id, tenant_id, lead_id, subject, _now()))
+    return tracking_id
+
+
+def record_open(tracking_id: str) -> None:
+    """像素被加载 = 邮件被打开。首次记 opened_at，之后累加。"""
+    if not tracking_id or not tracking_id.startswith("trk_"):
+        return
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE email_tracking
+            SET open_count = open_count + 1,
+                last_open = ?,
+                opened_at = COALESCE(opened_at, ?)
+            WHERE tracking_id = ?
+        """, (_now(), _now(), tracking_id))
+
+
+def record_click(tracking_id: str) -> None:
+    if not tracking_id or not tracking_id.startswith("trk_"):
+        return
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE email_tracking
+            SET click_count = click_count + 1, last_click = ?,
+                opened_at = COALESCE(opened_at, ?)
+            WHERE tracking_id = ?
+        """, (_now(), _now(), tracking_id))
+
+
+def get_tracking_for_lead(tenant_id: str, lead_id: str) -> list:
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT * FROM email_tracking
+            WHERE tenant_id=? AND lead_id=? ORDER BY sent_at DESC
+        """, (tenant_id, lead_id)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_open_stats(tenant_id: str) -> dict:
+    """租户维度的发信/打开/点击汇总，给看板用。"""
+    with get_conn() as conn:
+        row = conn.execute("""
+            SELECT COUNT(*) sent,
+                   SUM(CASE WHEN opened_at IS NOT NULL THEN 1 ELSE 0 END) opened,
+                   SUM(CASE WHEN click_count > 0 THEN 1 ELSE 0 END) clicked
+            FROM email_tracking WHERE tenant_id=?
+        """, (tenant_id,)).fetchone()
+    sent = row["sent"] or 0
+    opened = row["opened"] or 0
+    clicked = row["clicked"] or 0
+    return {
+        "sent": sent, "opened": opened, "clicked": clicked,
+        "open_rate": round(opened / sent * 100, 1) if sent else 0.0,
+        "click_rate": round(clicked / sent * 100, 1) if sent else 0.0,
+    }
 
 
 # ── 清理过期 token（定期调用）─────────────────────────────

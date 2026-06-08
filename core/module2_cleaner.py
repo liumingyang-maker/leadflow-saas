@@ -423,10 +423,15 @@ class Cleaner:
     # 主流水线
     # ─────────────────────────────────────────
 
-    def run(self, raw_leads: list[dict], source: str = "unknown") -> dict:
+    def run(self, raw_leads: list[dict], source: str = "unknown",
+            db_path=None) -> dict:
         """
         完整清洗流水线：
           原始数据 → 标准化 → 批次内去重 → 写数据库（跳过已存在）
+
+        参数：
+          db_path — 租户数据库路径（SaaS多租户模式必传）
+                    不传则使用旧版单用户全局 db（向后兼容）
 
         返回运行统计：
         {
@@ -437,6 +442,17 @@ class Cleaner:
             "db_dupes": 已存在跳过数,
         }
         """
+        # 多租户模式：按 db_path 创建专属数据库实例
+        if db_path:
+            from database import Database
+            _db = Database(db_path=db_path)
+            _db.init()
+        else:
+            try:
+                _db = db       # 旧版单用户全局对象（向后兼容）
+            except NameError:
+                raise RuntimeError("Cleaner.run() 需要传入 db_path 参数（SaaS模式）")
+
         start = time.time()
         stats = {
             "input": len(raw_leads),
@@ -465,14 +481,14 @@ class Cleaner:
         logger.info(f"批次内去重: 合并 {batch_dupes} 条，剩余 {len(deduped)} 条")
 
         # Step 3: 写入数据库（跳过已存在）
-        db_new, db_dupes = db.bulk_insert_leads(deduped)
+        db_new, db_dupes = _db.bulk_insert_leads(deduped)
         stats["db_new"] = db_new
         stats["db_dupes"] = db_dupes
 
         duration = round(time.time() - start, 2)
 
         # 记录运行日志
-        db.log_collection(
+        _db.log_collection(
             source=source,
             query="cleaning_pipeline",
             results_count=stats["input"],
@@ -482,7 +498,7 @@ class Cleaner:
             duration_secs=duration,
         )
 
-        logger.success(
+        logger.info(
             f"清洗完成 ({duration}s): "
             f"输入{stats['input']} → "
             f"新增{db_new} | 合并{batch_dupes} | 跳过{db_dupes} | 无效{stats['invalid']}"
@@ -492,6 +508,9 @@ class Cleaner:
 
 # 单例
 cleaner = Cleaner()
+
+# app.py 里用 DataCleaner 导入，保持兼容
+DataCleaner = Cleaner
 
 
 # ─────────────────────────────────────────

@@ -1,0 +1,132 @@
+{% extends "app/base.html" %}
+{% block title %}工作台{% endblock %}
+{% block page_title %}工作台{% endblock %}
+
+{% block content %}
+<!-- 欢迎 -->
+<div style="margin-bottom:18px">
+  <div style="font-size:20px;font-weight:800">你好，{{ acct.company or session.get('tenant_email','') }} 👋</div>
+  <div style="font-size:13px;color:var(--muted);margin-top:3px">欢迎回到 LeadFlow，今天也去挖到好客户吧。</div>
+</div>
+
+<!-- 关键数据 -->
+<div class="stat-grid">
+  {% for label, val, color in [
+    ('总客户数', stats.total or 0, 'var(--text)'),
+    ('A 级客户', stats.grade_A or 0, '#16a34a'),
+    ('已联系', stats.contacted or 0, '#c2410c'),
+    ('已回复', stats.replied or 0, '#166534'),
+    ('邮件打开率', (email_stats.open_rate ~ '%') if email_stats.sent else '—', '#2563eb'),
+  ] %}
+  <div class="stat-card">
+    <div class="label">{{ label }}</div>
+    <div class="value" style="color:{{ color }}">{{ val }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 常用功能 -->
+<div class="section-head"><h2>常用功能</h2></div>
+<div class="feat-grid" style="margin-bottom:22px">
+  {% for icon, bg, fg, title, desc, href in [
+    ('🔍','#eff4ff','#2563eb','采集渠道','9个渠道找真实买家：海关/地图/搜索/Apollo','/collect'),
+    ('🔗','#ecfdf5','#16a34a','独立站询盘','把官网询盘表单接进来，访客自动入库','/inbound'),
+    ('📋','#fff7ed','#c2410c','客户列表','查看跟进客户，找邮箱/验真/发信/深度调查','/leads'),
+    ('✉️','#f5f3ff','#7c3aed','邮件模板','维护开发信模板，发信自动套用','/email-templates'),
+    ('📊','#fef9f0','#d97706','数据统计','客户分级、触达效果、采集记录一目了然','/stats'),
+    ('📥','#eef6ff','#0369a1','导入展会数据','广交会/展会名片 Excel 一键导入','/import'),
+    ('🔍','#e0f2fe','#0369a1','批量找邮箱','给有官网/主页没邮箱的线索一键补全联系方式','#run-enrich'),
+    ('⚙️','#f3f5f9','#475569','系统设置','发信通道、API Key、自动跟进、WhatsApp','/settings'),
+    ('🚀','#fff1f2','#e11d48','全流程运行','一键采集+评分，自动跑完整流程','#run-all'),
+  ] %}
+  <a class="feat-card" href="{{ href }}"
+     {% if href == '#run-all' %}onclick="triggerTask('all');return false;"
+     {% elif href == '#run-enrich' %}onclick="triggerTask('enrich');return false;"{% endif %}>
+    <div class="feat-ic" style="background:{{ bg }};color:{{ fg }}">{{ icon }}</div>
+    <div class="ft">{{ title }}</div>
+    <div class="fd">{{ desc }}</div>
+  </a>
+  {% endfor %}
+</div>
+
+<!-- 最近动态 -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <div class="card card-pad">
+    <div class="card-title">🆕 最近客户</div>
+    {% if recent_leads %}
+    {% for l in recent_leads %}
+    <a href="/lead/{{ l.id }}" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f3f5f9;color:var(--text)">
+      <span class="grade grade-{{ l.grade or 'D' }}">{{ l.grade or '·' }}</span>
+      <span style="flex:1;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.company_name }}</span>
+      <span style="font-size:12px;color:var(--faint)">{{ l.country }}</span>
+    </a>
+    {% endfor %}
+    <a href="/leads" style="display:inline-block;margin-top:10px;font-size:13px">查看全部客户 →</a>
+    {% else %}
+    <div style="font-size:13px;color:var(--muted);padding:8px 0">还没有客户，去<a href="/collect">采集渠道</a>挖第一批吧。</div>
+    {% endif %}
+  </div>
+
+  <div class="card card-pad">
+    <div class="card-title">📈 最近采集</div>
+    {% if history %}
+    {% for h in history %}
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f3f5f9;font-size:13px">
+      <span style="color:var(--faint);font-size:11px;width:74px">{{ h.started_at[:16] if h.started_at else '—' }}</span>
+      <span style="flex:1">{{ h.source }}</span>
+      <span style="color:#16a34a;font-weight:600">+{{ h.new_leads_count }}</span>
+    </div>
+    {% endfor %}
+    <a href="/stats" style="display:inline-block;margin-top:10px;font-size:13px">查看采集记录 →</a>
+    {% else %}
+    <div style="font-size:13px;color:var(--muted);padding:8px 0">还没有采集记录。</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block rightrail %}
+<!-- 账户/试用 -->
+<div class="card card-pad">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <div class="acct-av" style="width:38px;height:38px;font-size:16px">{{ (acct.company or 'L')[:1] | upper }}</div>
+    <div>
+      <div style="font-weight:700;font-size:14px">{{ acct.company or '我的账户' }}</div>
+      <div style="font-size:12px;color:var(--faint)">{{ acct.email }}</div>
+    </div>
+  </div>
+  {% if acct.status == 'active' %}
+  <div style="background:#ecfdf5;color:#047857;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600">
+    ✅ 正式版 · 功能全部开放
+  </div>
+  {% else %}
+  <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px">
+    <div style="font-size:13px;color:#c2410c;font-weight:600">试用版 · 剩 {{ acct.trial_days_left if acct.trial_days_left is not none else '—' }} 天</div>
+    <div style="font-size:12px;color:#9a3412;margin-top:3px">升级正式版解锁全部功能与额度</div>
+    <button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%" onclick="toast('请联系客服开通正式版','info')">开通正式版</button>
+  </div>
+  {% endif %}
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+    <div>
+      <div style="font-size:12px;color:var(--faint)">账户余额</div>
+      <div style="font-size:20px;font-weight:800">¥0</div>
+    </div>
+    <button class="btn btn-sm" onclick="toast('请联系客服充值','info')">充值</button>
+  </div>
+</div>
+
+<!-- 使用教程 -->
+<div class="card card-pad">
+  <div class="card-title">📘 快速上手</div>
+  <a href="/collect" style="display:block;padding:8px 0;border-bottom:1px solid #f3f5f9;font-size:13px">① 配好 API Key，去采集渠道挖客户</a>
+  <a href="/leads" style="display:block;padding:8px 0;border-bottom:1px solid #f3f5f9;font-size:13px">② 进客户详情：一键找邮箱、验真、发开发信</a>
+  <a href="/inbound" style="display:block;padding:8px 0;border-bottom:1px solid #f3f5f9;font-size:13px">③ 把官网询盘接进来，被动获客</a>
+  <a href="/settings" style="display:block;padding:8px 0;font-size:13px">④ 设置发信通道 + 自动跟进</a>
+</div>
+
+<!-- 客服 -->
+<div class="card card-pad" style="text-align:center">
+  <div style="font-size:13px;font-weight:600;margin-bottom:4px">需要帮助？</div>
+  <div style="font-size:12px;color:var(--muted)">遇到问题随时联系客服，我们帮你跑通整个流程。</div>
+</div>
+{% endblock %}

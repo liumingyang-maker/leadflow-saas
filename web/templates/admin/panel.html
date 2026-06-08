@@ -56,6 +56,14 @@ tr:hover td{background:#243349}
 </div>
 
 <div class="content">
+  {% with messages = get_flashed_messages() %}
+  {% if messages %}
+  <div style="background:#1e3a2f;border:1px solid #059669;border-radius:8px;
+              padding:12px 16px;margin-bottom:20px;color:#34d399;font-size:13px">
+    {{ messages[0] }}
+  </div>
+  {% endif %}
+  {% endwith %}
 
   <!-- 统计 -->
   {% set active = tenants | selectattr('status','eq','active') | list | length %}
@@ -130,6 +138,10 @@ tr:hover td{background:#243349}
                         onclick="return confirm('确认暂停 {{ t.email }}？')">暂停</button>
               </form>
               {% endif %}
+              <form method="POST" action="/admin/tenant/{{ t.id }}/reset_password" style="display:inline">
+                <button class="btn-sm" type="submit" style="border-color:#7c3aed;color:#a78bfa"
+                        onclick="return confirm('重置 {{ t.email }} 的密码为 reset123？')">重置密码</button>
+              </form>
             </div>
           </td>
         </tr>

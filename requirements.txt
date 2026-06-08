@@ -1,12 +1,22 @@
+# Web 框架
 flask>=3.0
 flask-cors>=4.0
 flask-login>=0.6
+waitress>=3.0            # 生产 WSGI 服务器（单进程多线程，跟后台调度/内存状态兼容）
+
+# 数据处理
 pandas>=2.0
 openpyxl>=3.1
-requests>=2.31
-python-dotenv>=1.0
 fuzzywuzzy>=0.18
 python-Levenshtein>=0.21
 pycountry>=22.3
+
+# 网络 / 采集
+requests>=2.31
+curl_cffi>=0.5          # 伪装浏览器指纹绕基础反爬
+yt-dlp>=2024.1          # YouTube 免 key 采集（官方 API 没配时降级用）
+python-dotenv>=1.0
+
+# AI（DeepSeek/Claude 走 requests，这两个为可选/备用）
 anthropic>=0.28
 openai>=1.30

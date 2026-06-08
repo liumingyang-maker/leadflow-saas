@@ -1,0 +1,733 @@
+{% extends "app/base.html" %}
+{% block title %}采集渠道{% endblock %}
+{% block page_title %}采集渠道{% endblock %}
+{% block content %}
+<style>
+.ch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;margin-bottom:28px}
+.ch-card{background:#fff;border:2px solid #e2e8f0;border-radius:10px;overflow:hidden;transition:.15s}
+.ch-card.selected{border-color:#2563eb}
+.ch-card.disabled{opacity:.6}
+.ch-head{display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer}
+.ch-check{width:18px;height:18px;flex-shrink:0;cursor:pointer;accent-color:#2563eb}
+.ch-icon{font-size:22px;flex-shrink:0}
+.ch-info{flex:1}
+.ch-name{font-size:14px;font-weight:600;color:#111827}
+.ch-desc{font-size:12px;color:#6b7280;margin-top:2px}
+.ch-badges{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500}
+.badge-green{background:#dcfce7;color:#166534}
+.badge-blue{background:#dbeafe;color:#1e40af}
+.badge-yellow{background:#fef9c3;color:#854d0e}
+.badge-red{background:#fee2e2;color:#991b1b}
+.badge-gray{background:#f3f4f6;color:#6b7280}
+.ch-guide-btn{padding:5px 10px;font-size:12px;border:1px solid #d1d5db;border-radius:5px;
+              background:#f9fafb;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.ch-guide-btn:hover{background:#eff6ff;border-color:#2563eb;color:#2563eb}
+.ch-guide{display:none;padding:0 16px 16px;border-top:1px solid #f1f5f9;margin-top:0}
+.ch-guide.open{display:block}
+.ch-guide h4{font-size:13px;font-weight:600;color:#374151;margin:12px 0 6px}
+.ch-guide ol{padding-left:18px}
+.ch-guide li{font-size:13px;color:#4b5563;line-height:1.8;margin-bottom:2px}
+.ch-guide .tip{background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;
+               padding:8px 12px;font-size:12px;color:#92400e;margin-top:8px}
+.ch-guide .warn{background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;
+                padding:8px 12px;font-size:12px;color:#991b1b;margin-top:8px}
+.ch-guide .link{color:#2563eb;text-decoration:none}
+.ch-guide .link:hover{text-decoration:underline}
+.section-title{font-size:15px;font-weight:700;color:#1e293b;margin:24px 0 12px;
+               display:flex;align-items:center;gap:8px}
+.section-title::after{content:'';flex:1;height:1px;background:#e2e8f0}
+.run-bar{position:sticky;bottom:0;background:#fff;border-top:1px solid #e2e8f0;
+         padding:14px 0;display:flex;align-items:center;gap:12px;z-index:10}
+.selected-count{font-size:13px;color:#6b7280}
+/* 展会清洗区域 */
+.card-box{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin-bottom:16px}
+.upload-zone{border:2px dashed #d1d5db;border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:.15s}
+.upload-zone:hover{border-color:#2563eb;background:#eff6ff}
+</style>
+
+<div class="content">
+
+<!-- ① 海关数据 -->
+<div class="section-title">🏛️ 海关数据（最精准，直接找真实进口商）</div>
+<div class="ch-grid">
+
+  <!-- ImportYeti -->
+  <div class="ch-card {% if cfg.importyeti_api_key %}selected{% endif %}" id="card-importyeti">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-importyeti"
+             {% if cfg.importyeti_api_key %}checked{% endif %}>
+      <div class="ch-icon">🇺🇸</div>
+      <div class="ch-info">
+        <div class="ch-name">ImportYeti</div>
+        <div class="ch-desc">美国海关进口记录 · 找到真实从中国采购的买家</div>
+        <div class="ch-badges">
+          {% if cfg.importyeti_api_key %}
+          <span class="badge badge-green">✅ 已配置</span>
+          {% else %}
+          <span class="badge badge-yellow">⚙️ 无Key也可用（数据有限）</span>
+          {% endif %}
+          <span class="badge badge-blue">覆盖：美国</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('importyeti')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-importyeti">
+      <h4>📌 这个渠道能做什么？</h4>
+      <p style="font-size:13px;color:#4b5563">抓取美国海关的进口提单记录，直接找到"正在从中国买东西"的美国公司，数据真实可靠。</p>
+      <h4>🔑 如何获取 API Key（可选）</h4>
+      <ol>
+        <li>访问 <a class="link" href="https://importyeti.com" target="_blank">importyeti.com</a></li>
+        <li>注册账号后进入 Settings → API</li>
+        <li>复制 API Key，填入 <a class="link" href="/settings">系统设置</a></li>
+      </ol>
+      <div class="tip">💡 不填 Key 也能用，但每次采集数量有限。付费 $99/月 可解锁完整数据。</div>
+    </div>
+  </div>
+
+  <!-- Zauba（印度） -->
+  <div class="ch-card" id="card-zauba">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-zauba">
+      <div class="ch-icon">🇮🇳</div>
+      <div class="ch-info">
+        <div class="ch-name">Zauba（印度海关）</div>
+        <div class="ch-desc">印度进口记录 · 完全免费 · 覆盖南亚最大市场</div>
+        <div class="ch-badges">
+          <span class="badge badge-green">🆓 完全免费</span>
+          <span class="badge badge-blue">覆盖：印度</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('zauba')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-zauba">
+      <h4>📌 这个渠道能做什么？</h4>
+      <p style="font-size:13px;color:#4b5563">Zauba.com 是印度官方进出口数据平台，免费公开所有进口商信息，是开发印度市场的最佳数据源。</p>
+      <h4>✅ 无需任何配置，直接运行即可</h4>
+      <div class="tip">💡 印度是中国摩托车、机械、纺织品的重要市场，建议勾选此渠道。</div>
+    </div>
+  </div>
+
+  <!-- 阿里巴巴RFQ -->
+  <div class="ch-card" id="card-alibaba-rfq">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-alibaba-rfq">
+      <div class="ch-icon">🛒</div>
+      <div class="ch-info">
+        <div class="ch-name">阿里巴巴 RFQ</div>
+        <div class="ch-desc">全球买家主动发布的采购需求 · 爬取公开数据</div>
+        <div class="ch-badges">
+          <span class="badge badge-green">🆓 公开数据免费</span>
+          <span class="badge badge-blue">覆盖：全球</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('alibaba-rfq')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-alibaba-rfq">
+      <h4>📌 这个渠道能做什么？</h4>
+      <p style="font-size:13px;color:#4b5563">抓取阿里巴巴国际站上买家主动发布的采购需求（RFQ），这些都是<strong>有明确购买意向</strong>的客户，质量极高。</p>
+      <h4>⚠️ 数据说明</h4>
+      <p style="font-size:13px;color:#4b5563">系统只采集公开可见的买家公司名+需求描述+国家，<strong>不包含联系方式</strong>（需要Gold会员才能联系）。采集到后可配合 Hunter.io 或 Apollo 找邮箱。</p>
+      <h4>✅ 无需配置，直接运行</h4>
+      <div class="tip">💡 建议搭配 Apollo.io 一起使用，先找到公司，再补充联系人信息。</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ② Google Maps -->
+<div class="section-title">🗺️ 地图数据（直接获取电话号码，非洲/东南亚必备）</div>
+<div class="ch-grid">
+
+  <!-- Google Maps -->
+  <div class="ch-card {% if cfg.serpapi_key %}selected{% endif %}" id="card-google-maps">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-google-maps"
+             {% if cfg.serpapi_key %}checked{% endif %}>
+      <div class="ch-icon">🗺️</div>
+      <div class="ch-info">
+        <div class="ch-name">Google Maps 商家搜索</div>
+        <div class="ch-desc">搜索目标国家进口商 · 直接获得电话/地址/网站 · 共用 Serper Key</div>
+        <div class="ch-badges">
+          {% if cfg.serpapi_key %}
+          <span class="badge badge-green">✅ 已配置</span>
+          {% else %}
+          <span class="badge badge-yellow">⚙️ 需要 Serper Key</span>
+          {% endif %}
+          <span class="badge badge-red">📞 直接拿电话号码</span>
+          <span class="badge badge-blue">覆盖：全球</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('google-maps')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-google-maps">
+      <h4>📌 为什么 Google Maps 是非洲/东南亚的黄金渠道？</h4>
+      <p style="font-size:13px;color:#4b5563">非洲和东南亚进口商普遍<strong>没有官网</strong>，但 95% 都在 Google Maps 登记了公司。这里能直接拿到<strong>电话号码</strong>，配合 WhatsApp 联系，回复率比邮件高10倍。</p>
+      <h4>🔍 工作原理</h4>
+      <ol>
+        <li>系统对每个目标国家的主要城市搜索：<br>
+            <code style="background:#f3f4f6;padding:1px 6px;border-radius:3px">"motorcycle engine importer Lagos"</code></li>
+        <li>Google Maps 返回：公司名、地址、电话、网站、评分</li>
+        <li>评价数越多 → 公司越活跃 → 系统自动打高分</li>
+      </ol>
+      <h4>🔑 配置说明</h4>
+      <p style="font-size:13px;color:#4b5563">与「Google 搜索 + AI 解析」<strong>共用同一个 Serper.dev Key</strong>，无需额外配置。每次 Maps 搜索消耗 1 个额度（和普通搜索一样）。</p>
+      <div class="tip">💡 建议优先采集尼日利亚、越南、巴基斯坦这三个国家，进口摩托发动机的商家最集中。</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ③ 搜索引擎 -->
+<div class="section-title">🔍 搜索引擎（覆盖广，发现未被海关记录的买家）</div>
+<div class="ch-grid">
+
+  <!-- Google + DeepSeek -->
+  <div class="ch-card {% if cfg.serpapi_key %}selected{% endif %}" id="card-google">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-google"
+             {% if cfg.serpapi_key %}checked{% endif %}>
+      <div class="ch-icon">🔍</div>
+      <div class="ch-info">
+        <div class="ch-name">Google 搜索 + AI 解析</div>
+        <div class="ch-desc">Serper.dev 搜索 · DeepSeek AI 筛选真实进口商</div>
+        <div class="ch-badges">
+          {% if cfg.serpapi_key %}
+          <span class="badge badge-green">✅ 已配置</span>
+          {% else %}
+          <span class="badge badge-yellow">⚙️ 需要 Serper Key</span>
+          {% endif %}
+          <span class="badge badge-green">注册免费送2500次</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('google')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-google">
+      <h4>📌 工作原理</h4>
+      <p style="font-size:13px;color:#4b5563">系统用你的产品关键词在谷歌搜索各目标国家的进口商，再交给 DeepSeek AI 分析哪些是真正的买家，自动过滤新闻/博客等无效结果。</p>
+      <h4>🔑 获取 Serper.dev Key（注册免费送2500次）</h4>
+      <ol>
+        <li>访问 <a class="link" href="https://serper.dev" target="_blank">serper.dev</a> → 点击 Sign Up</li>
+        <li>用谷歌账号注册，自动获得 2500 次免费额度</li>
+        <li>进入 Dashboard → API Key → 复制</li>
+        <li>填入 <a class="link" href="/settings">系统设置</a> 的「Serper.dev API Key」</li>
+      </ol>
+      <div class="tip">💡 2500次大约够搜索50个国家×50条结果，一般用1-2个月。续费约 $0.001/次，极便宜。</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ③ B2B平台 & 联系人 -->
+<div class="section-title">🤝 B2B平台 & 联系人数据</div>
+<div class="ch-grid">
+
+  <!-- Apollo.io -->
+  <div class="ch-card {% if cfg.apollo_api_key %}selected{% endif %}" id="card-apollo">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-apollo"
+             {% if cfg.apollo_api_key %}checked{% endif %}>
+      <div class="ch-icon">🚀</div>
+      <div class="ch-info">
+        <div class="ch-name">Apollo.io</div>
+        <div class="ch-desc">全球2.7亿联系人数据库 · 直接找到采购负责人邮箱</div>
+        <div class="ch-badges">
+          {% if cfg.apollo_api_key %}
+          <span class="badge badge-green">✅ 已配置</span>
+          {% else %}
+          <span class="badge badge-yellow">⚙️ 需要 API Key</span>
+          {% endif %}
+          <span class="badge badge-green">免费50条/月</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('apollo')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-apollo">
+      <h4>📌 这个渠道能做什么？</h4>
+      <p style="font-size:13px;color:#4b5563">Apollo.io 拥有全球2.7亿联系人数据，可以直接搜索"越南摩托车进口商的采购总监邮箱"，数据来源于LinkedIn，但不需要付LinkedIn的高价。</p>
+      <h4>🔑 第一步：注册 Apollo.io 免费账号</h4>
+      <ol>
+        <li>访问 <a class="link" href="https://app.apollo.io/#/sign-up" target="_blank">app.apollo.io/#/sign-up</a></li>
+        <li>用企业邮箱注册（Gmail/QQ邮箱也可以）</li>
+        <li>完成邮箱验证</li>
+      </ol>
+      <h4>🔑 第二步：获取 API Key</h4>
+      <ol>
+        <li>登录后点击右上角头像 → <strong>Settings</strong></li>
+        <li>左侧菜单点击 <strong>Integrations</strong></li>
+        <li>找到 <strong>API</strong> 选项</li>
+        <li>点击 <strong>Connect</strong> 生成 API Key</li>
+        <li>复制 Key（格式类似：<code style="background:#f3f4f6;padding:1px 4px;border-radius:3px">xxxxxxxxxxxxxxxxxxxxxxxx</code>）</li>
+      </ol>
+      <h4>🔑 第三步：填入系统</h4>
+      <ol>
+        <li>点击下方「去填写 Apollo Key」按钮</li>
+        <li>或者进入 <a class="link" href="/settings">系统设置</a> 找到「Apollo.io API Key」</li>
+        <li>粘贴刚才复制的 Key，保存即可</li>
+      </ol>
+      <div style="margin-top:10px">
+        <a href="/settings#apollo" class="btn btn-primary" style="font-size:13px;padding:7px 16px;text-decoration:none">
+          ⚙️ 去填写 Apollo Key
+        </a>
+      </div>
+      <div class="tip">💡 免费版每月50条，够体验。升级付费版（$49/月）可解锁无限量。</div>
+    </div>
+  </div>
+
+  <!-- Europages -->
+  <div class="ch-card" id="card-europages">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-europages">
+      <div class="ch-icon">🇪🇺</div>
+      <div class="ch-info">
+        <div class="ch-name">Europages</div>
+        <div class="ch-desc">欧洲最大 B2B 目录 · 280万欧洲买家</div>
+        <div class="ch-badges">
+          <span class="badge badge-green">🆓 免费爬取</span>
+          <span class="badge badge-blue">覆盖：西欧29国</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('europages')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-europages">
+      <h4>📌 这个渠道能做什么？</h4>
+      <p style="font-size:13px;color:#4b5563">Europages 是欧洲最大的 B2B 采购目录，收录了德国、法国、意大利、西班牙等国家的进口商和分销商，公司名、网站、联系电话都是公开数据。</p>
+      <h4>✅ 无需配置，直接运行</h4>
+      <div class="tip">💡 特别适合开发欧洲市场，德国、法国的中小型进口商在这里最集中。</div>
+    </div>
+  </div>
+
+  <!-- Hunter.io -->
+  <div class="ch-card {% if cfg.hunter_api_key %}selected{% endif %}" id="card-hunter">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-hunter"
+             {% if cfg.hunter_api_key %}checked{% endif %}>
+      <div class="ch-icon">📧</div>
+      <div class="ch-info">
+        <div class="ch-name">Hunter.io 邮箱补充</div>
+        <div class="ch-desc">根据公司网址自动找到联系人邮箱</div>
+        <div class="ch-badges">
+          {% if cfg.hunter_api_key %}
+          <span class="badge badge-green">✅ 已配置</span>
+          {% else %}
+          <span class="badge badge-yellow">⚙️ 需要 API Key</span>
+          {% endif %}
+          <span class="badge badge-green">免费25次/月</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('hunter')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-hunter">
+      <h4>📌 这个渠道能做什么？</h4>
+      <p style="font-size:13px;color:#4b5563">对已采集到的客户，如果只有公司网址没有邮箱，Hunter.io 可以自动查找该公司的联系人邮箱地址。</p>
+      <h4>🔑 获取免费 API Key</h4>
+      <ol>
+        <li>访问 <a class="link" href="https://hunter.io" target="_blank">hunter.io</a> → Sign Up</li>
+        <li>用邮箱注册，每月免费25次查询</li>
+        <li>进入 Dashboard → API → 复制 API Key</li>
+        <li>填入 <a class="link" href="/settings">系统设置</a></li>
+      </ol>
+    </div>
+  </div>
+
+</div>
+
+<!-- ④ 社交媒体 -->
+<div class="section-title">📱 社交媒体（覆盖没有官网的中小进口商）</div>
+<div class="ch-grid">
+
+  <!-- Facebook 公开主页 -->
+  <div class="ch-card" id="card-facebook-pages">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-facebook-pages">
+      <div class="ch-icon">📘</div>
+      <div class="ch-info">
+        <div class="ch-name">Facebook 商业主页</div>
+        <div class="ch-desc">爬取公开商业主页信息（公司名、电话、网址）</div>
+        <div class="ch-badges">
+          <span class="badge badge-red">⚠️ 有被封IP风险</span>
+          <span class="badge badge-green">🆓 免费</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('facebook-pages')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-facebook-pages">
+      <h4>📌 这个渠道能做什么？</h4>
+      <p style="font-size:13px;color:#4b5563">在Facebook上搜索你的行业关键词，找到有公开主页的进口商公司，抓取公司名、地址、电话、网站等公开信息。</p>
+      <div class="warn">⚠️ <strong>风险提示</strong>：Facebook 会检测自动化访问，可能导致 IP 被临时封锁（通常24小时自动解除）。建议每次采集间隔不低于6小时，不要频繁运行。</div>
+      <h4>✅ 无需配置，直接运行</h4>
+      <h4>💡 更推荐的方式：手动指南（下方）</h4>
+      <p style="font-size:13px;color:#4b5563">手动加入相关 Facebook 群组，找到的客户质量更高，详见下方「Facebook 群组获客指南」。</p>
+    </div>
+  </div>
+
+  <!-- YouTube 评论区/简介获客 -->
+  <div class="ch-card {% if cfg.youtube_api_key %}selected{% endif %}" id="card-youtube">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-youtube" {% if cfg.youtube_api_key %}checked{% endif %}>
+      <div class="ch-icon">▶️</div>
+      <div class="ch-info">
+        <div class="ch-name">YouTube 评论 & 简介</div>
+        <div class="ch-desc">搜视频→挖简介里的官网/邮箱 + 评论区问价/求合作的真实买家</div>
+        <div class="ch-badges">
+          {% if cfg.youtube_api_key %}<span class="badge badge-green">✅ 已配官方API</span>
+          {% else %}<span class="badge badge-blue">🔑 官方API更佳</span><span class="badge badge-green">🆓 yt-dlp免key可用</span>{% endif %}
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('youtube')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-youtube">
+      <h4>📌 这个渠道能做什么？</h4>
+      <p style="font-size:13px;color:#4b5563">按你的关键词搜 YouTube 视频，挖两类线索：① 视频简介里留的官网/邮箱/WhatsApp（多是卖家/经销商）；② 评论区里问价、求合作、留邮箱的留言（多是真实买家）。系统自动判断采购意向并提取联系方式。</p>
+      <h4>🔑 配置（二选一）</h4>
+      <p style="font-size:13px;color:#4b5563">① 在「系统设置」填 YouTube Data API Key（免费申请，数据干净更快）；② 不填也行，系统自动用 yt-dlp 免 key 采集，稍慢。</p>
+      <div class="tip">💡 申请免费 key：Google Cloud Console → 启用 YouTube Data API v3 → 创建 API 密钥，每天 1 万额度够用。</div>
+    </div>
+  </div>
+
+  <!-- TikTok 评论区获客（Apify）-->
+  <div class="ch-card {% if cfg.apify_token %}selected{% endif %}" id="card-tiktok">
+    <div class="ch-head">
+      <input type="checkbox" class="ch-check" id="ch-tiktok" {% if cfg.apify_token %}checked{% endif %}>
+      <div class="ch-icon">🎵</div>
+      <div class="ch-info">
+        <div class="ch-name">TikTok 评论 & 视频</div>
+        <div class="ch-desc">搜视频→评论区问价/求合作的买家 + 文案里的联系方式</div>
+        <div class="ch-badges">
+          {% if cfg.apify_token %}<span class="badge badge-green">✅ 已配 Apify</span>
+          {% else %}<span class="badge badge-yellow">💰 需 Apify(按量付费)</span>{% endif %}
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('tiktok')">查看说明 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-tiktok">
+      <h4>📌 这个渠道能做什么？</h4>
+      <p style="font-size:13px;color:#4b5563">和 YouTube 类似，但 TikTok 反爬极凶、没有可用的官方接口，所以走专业抓取平台 Apify（它替你扛反爬，按量付费）。搜你的关键词 → 抓视频文案和评论 → 提取问价/求合作/留邮箱的买家。</p>
+      <h4>🔑 配置</h4>
+      <p style="font-size:13px;color:#4b5563">在「系统设置」填你的 Apify Token 即可启用。</p>
+      <div class="warn">💰 <strong>费用提示</strong>：TikTok 采集会消耗你 Apify 账户的额度（按抓取量计费），运行前留意用量。</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ⑤ 手动获客指南 -->
+<div class="section-title">📖 手动获客指南（教你在平台上主动找客户，再导入系统）</div>
+<div class="ch-grid">
+
+  <!-- LinkedIn -->
+  <div class="ch-card disabled" id="card-linkedin-guide">
+    <div class="ch-head" style="cursor:default">
+      <div class="ch-icon">💼</div>
+      <div class="ch-info">
+        <div class="ch-name">LinkedIn 获客指南</div>
+        <div class="ch-desc">手动搜索采购决策人 + 用 Apollo.io 自动补充邮箱</div>
+        <div class="ch-badges">
+          <span class="badge badge-gray">📖 操作指南</span>
+          <span class="badge badge-blue">免费使用</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('linkedin-guide')">查看步骤 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-linkedin-guide">
+      <h4>🎯 目标：找到目标国家的采购负责人</h4>
+      <h4>第一步：精准搜索</h4>
+      <ol>
+        <li>登录 <a class="link" href="https://linkedin.com" target="_blank">LinkedIn</a></li>
+        <li>搜索框输入：<code style="background:#f3f4f6;padding:1px 6px;border-radius:3px">Purchasing Manager [国家] [行业]</code><br>
+            例：<em>Purchasing Manager Nigeria motorcycle</em></li>
+        <li>点击「People」筛选，再点「All Filters」</li>
+        <li>设置：Locations（选目标国家）、Industry（选你的行业）</li>
+      </ol>
+      <h4>第二步：记录信息</h4>
+      <ol>
+        <li>找到合适的联系人，记录：姓名、职位、公司名、公司网址</li>
+        <li>整理到 Excel，格式：公司名、姓名、职位、网址、国家</li>
+      </ol>
+      <h4>第三步：导入系统</h4>
+      <ol>
+        <li>进入 <a class="link" href="/import">展会数据导入</a> 页面</li>
+        <li>上传 Excel，系统自动匹配字段</li>
+        <li>如果配置了 Hunter.io，系统会自动补充邮箱</li>
+      </ol>
+      <div class="tip">💡 配合 Apollo.io 更高效：在 Apollo 里直接搜索公司名，可以直接获得联系人邮箱，省去手动记录步骤。</div>
+    </div>
+  </div>
+
+  <!-- Facebook 群组 -->
+  <div class="ch-card disabled" id="card-facebook-group">
+    <div class="ch-head" style="cursor:default">
+      <div class="ch-icon">👥</div>
+      <div class="ch-info">
+        <div class="ch-name">Facebook 群组获客指南</div>
+        <div class="ch-desc">加入目标市场的行业群组，找到主动发采购需求的买家</div>
+        <div class="ch-badges">
+          <span class="badge badge-gray">📖 操作指南</span>
+          <span class="badge badge-blue">非洲/东南亚效果极好</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('facebook-group')">查看步骤 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-facebook-group">
+      <h4>🎯 为什么 Facebook 群组比 LinkedIn 更有效（针对非洲/东南亚）？</h4>
+      <p style="font-size:13px;color:#4b5563">非洲和东南亚大量进口商没有官网，但几乎都在 Facebook 上做生意，群组里每天都有人发采购需求。</p>
+      <h4>第一步：找到目标群组</h4>
+      <ol>
+        <li>在 Facebook 搜索框输入关键词，例如：
+          <ul style="margin-top:4px;list-style:disc;padding-left:16px">
+            <li><em>Nigeria motorcycle importers</em></li>
+            <li><em>Vietnam auto parts buyers group</em></li>
+            <li><em>Kenya wholesale distributors</em></li>
+            <li><em>Pakistan machinery importer</em></li>
+          </ul>
+        </li>
+        <li>点击「Groups」标签</li>
+        <li>申请加入成员数超过1000人的活跃群组</li>
+      </ol>
+      <h4>第二步：找到采购需求</h4>
+      <ol>
+        <li>进群后在搜索框输入：<em>looking for supplier</em> 或 <em>need supplier</em> 或 <em>want to buy</em></li>
+        <li>找到近期发帖的采购商，记录公司名、联系方式</li>
+        <li>也可以主动发帖介绍产品，等买家来联系你</li>
+      </ol>
+      <h4>第三步：导入系统</h4>
+      <ol>
+        <li>把找到的客户整理到 Excel</li>
+        <li>通过 <a class="link" href="/import">展会数据导入</a> 上传</li>
+      </ol>
+      <div class="tip">💡 建议同时加入5-10个群组，每天看15分钟，1个月内就能积累几十个真实买家线索。</div>
+    </div>
+  </div>
+
+  <!-- WhatsApp -->
+  <div class="ch-card disabled" id="card-whatsapp">
+    <div class="ch-head" style="cursor:default">
+      <div class="ch-icon">💬</div>
+      <div class="ch-info">
+        <div class="ch-name">WhatsApp 商务指南</div>
+        <div class="ch-desc">非洲/南亚进口商的主要沟通工具，比邮件回复率高10倍</div>
+        <div class="ch-badges">
+          <span class="badge badge-gray">📖 操作指南</span>
+          <span class="badge badge-red">非洲必备渠道</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('whatsapp')">查看步骤 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-whatsapp">
+      <h4>🎯 为什么非洲客户要用 WhatsApp？</h4>
+      <p style="font-size:13px;color:#4b5563">尼日利亚、肯尼亚、加纳等非洲国家的进口商几乎不看邮件，但 WhatsApp 回复率极高。拿到电话号码就能直接建立联系。</p>
+      <h4>第一步：收集 WhatsApp 联系方式</h4>
+      <ol>
+        <li>通过其他渠道（Facebook群组/海关数据）找到客户的电话号码</li>
+        <li>或在 Google 搜索：<em>[公司名] WhatsApp contact</em></li>
+        <li>很多非洲公司会在 Facebook 主页直接公开 WhatsApp 号码</li>
+      </ol>
+      <h4>第二步：建立联系</h4>
+      <ol>
+        <li>用 <strong>WhatsApp Business</strong> 账号联系（显示公司名称更专业）</li>
+        <li>第一条消息简短：介绍公司 + 产品 + 一张产品图片</li>
+        <li>不要发太长的消息，先用图片吸引注意力</li>
+      </ol>
+      <h4>第三步：记录到系统</h4>
+      <ol>
+        <li>把建立联系的客户信息整理到 Excel 导入 LeadFlow</li>
+        <li>在备注里记录 WhatsApp 号码，方便后续跟进</li>
+      </ol>
+      <div class="tip">💡 建议申请一个专用的 WhatsApp Business 账号，设置好公司名称和产品介绍，显得更专业。</div>
+    </div>
+  </div>
+
+  <!-- 广交会 -->
+  <div class="ch-card disabled" id="card-canton">
+    <div class="ch-head" style="cursor:default">
+      <div class="ch-icon">🎪</div>
+      <div class="ch-info">
+        <div class="ch-name">广交会 / 展会数据</div>
+        <div class="ch-desc">历届展会采集到的名片和客户名单批量导入</div>
+        <div class="ch-badges">
+          <span class="badge badge-gray">📖 操作指南</span>
+          <span class="badge badge-blue">存量数据变活水</span>
+        </div>
+      </div>
+      <button class="ch-guide-btn" onclick="toggleGuide('canton')">查看步骤 ▼</button>
+    </div>
+    <div class="ch-guide" id="guide-canton">
+      <h4>📌 把展会积累的名片全部数字化</h4>
+      <p style="font-size:13px;color:#4b5563">参加广交会、德国汉诺威展、印度机械展等展会收到的名片，可以批量导入系统，让存量数据发挥价值。</p>
+      <h4>方式一：Excel/名单批量导入</h4>
+      <ol>
+        <li>把名片信息整理到 Excel（或让助理整理）</li>
+        <li>列名包含：公司名、联系人、邮箱、电话、国家</li>
+        <li>进入 <a class="link" href="/import">展会数据导入</a> 页面上传</li>
+        <li>系统自动识别字段，一键导入</li>
+      </ol>
+      <h4>方式二：📸 名片照片一键识别（AI清洗）</h4>
+      <ol>
+        <li>在下方「展会名片 AI 清洗」区域上传名片照片</li>
+        <li>系统用 AI 自动识别：公司名、姓名、职位、邮箱、电话</li>
+        <li>确认信息后一键导入数据库</li>
+      </ol>
+      <div class="tip">💡 需要配置 DeepSeek API Key 才能使用 AI 识别功能（<a class="link" href="/settings">前往设置</a>）。</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ⑥ 展会名片 AI 清洗 -->
+<div class="section-title">🤖 展会名片 AI 清洗（上传照片自动识别）</div>
+<div class="card-box">
+  <p style="font-size:13px;color:#6b7280;margin-bottom:16px">
+    上传展会名片照片，AI 自动识别信息并整理成客户线索。支持单张或多张批量上传。
+    {% if not cfg.deepseek_api_key %}
+    <span style="color:#dc2626">⚠️ 需要先在 <a href="/settings" style="color:#2563eb">系统设置</a> 中填写 DeepSeek API Key</span>
+    {% endif %}
+  </p>
+  <div class="upload-zone" id="cardUploadZone" onclick="document.getElementById('cardFileInput').click()">
+    <div style="font-size:32px;margin-bottom:8px">📸</div>
+    <div style="font-size:14px;font-weight:500;color:#374151">点击上传名片照片</div>
+    <div style="font-size:12px;color:#9ca3af;margin-top:4px">支持 JPG、PNG，可多选</div>
+  </div>
+  <input type="file" id="cardFileInput" accept="image/*" multiple style="display:none"
+         onchange="handleCardUpload(this.files)">
+  <div id="cardResults" style="margin-top:14px"></div>
+</div>
+
+<!-- 运行栏（固定底部） -->
+<div class="run-bar">
+  <span class="selected-count" id="selectedCount">已选 0 个渠道</span>
+  <button class="btn btn-primary" onclick="runSelected()" id="runBtn" style="padding:10px 24px">
+    ▶ 运行已选渠道
+  </button>
+  <div id="runStatus" style="font-size:13px;color:#6b7280"></div>
+</div>
+
+</div><!-- end .content -->
+
+<script>
+// ── 展开/收起说明 ──────────────────────────────────────────
+function toggleGuide(id) {
+  var el  = document.getElementById('guide-' + id);
+  var btn = el.previousElementSibling.querySelector('.ch-guide-btn');
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    btn.textContent = btn.textContent.replace('▲','▼');
+  } else {
+    el.classList.add('open');
+    btn.textContent = btn.textContent.replace('▼','▲');
+  }
+}
+
+// ── 勾选渠道同步卡片高亮 ──────────────────────────────────
+document.querySelectorAll('.ch-check').forEach(function(cb) {
+  cb.addEventListener('change', function() {
+    var card = this.closest('.ch-card');
+    if (this.checked) card.classList.add('selected');
+    else              card.classList.remove('selected');
+    updateCount();
+  });
+});
+
+function updateCount() {
+  var n = document.querySelectorAll('.ch-check:checked').length;
+  document.getElementById('selectedCount').textContent = '已选 ' + n + ' 个渠道';
+}
+updateCount();
+
+// ── 运行已选渠道 ──────────────────────────────────────────
+function runSelected() {
+  var channels = [];
+  document.querySelectorAll('.ch-check:checked').forEach(function(cb) {
+    channels.push(cb.id.replace('ch-',''));
+  });
+  if (channels.length === 0) {
+    alert('请先勾选至少一个渠道');
+    return;
+  }
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('runStatus').textContent = '⏳ 采集中，请勿关闭页面…';
+
+  fetch('/run/collect', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({channels: channels}),
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      pollTask(data.task_id);
+    } else {
+      document.getElementById('runStatus').textContent = '❌ ' + (data.error || '启动失败');
+      document.getElementById('runBtn').disabled = false;
+    }
+  });
+}
+
+function pollTask(taskId) {
+  var timer = setInterval(function() {
+    fetch('/task/' + taskId)
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      if (d.status === 'done') {
+        clearInterval(timer);
+        document.getElementById('runStatus').textContent = '✅ 完成！' + (d.log||[]).join(' · ');
+        document.getElementById('runBtn').disabled = false;
+      } else if (d.status === 'error') {
+        clearInterval(timer);
+        document.getElementById('runStatus').textContent = '❌ 出错：' + (d.log||[]).join(' ');
+        document.getElementById('runBtn').disabled = false;
+      }
+    });
+  }, 2000);
+}
+
+// ── 名片 AI 识别 ──────────────────────────────────────────
+function handleCardUpload(files) {
+  if (!files || files.length === 0) return;
+  var container = document.getElementById('cardResults');
+  container.innerHTML = '<div style="color:#6b7280;font-size:13px">⏳ AI 识别中…</div>';
+
+  var formData = new FormData();
+  Array.from(files).forEach(function(f) { formData.append('cards', f); });
+
+  fetch('/collect/ocr-cards', { method: 'POST', body: formData })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    if (!data.ok || !data.results.length) {
+      container.innerHTML = '<div style="color:#dc2626;font-size:13px">识别失败，请检查 DeepSeek API Key 是否配置</div>';
+      return;
+    }
+    var html = '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">识别结果（确认后导入）：</div>';
+    data.results.forEach(function(r, i) {
+      html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:8px">';
+      html += '<div style="font-weight:500">' + (r.company_name||'未识别') + '</div>';
+      html += '<div style="font-size:12px;color:#6b7280;margin-top:4px">';
+      if (r.contact_name) html += '👤 ' + r.contact_name + '  ';
+      if (r.contact_title) html += r.contact_title + '  ';
+      if (r.email) html += '📧 ' + r.email + '  ';
+      if (r.phone) html += '📞 ' + r.phone;
+      html += '</div></div>';
+    });
+    html += '<button onclick="importCards(' + JSON.stringify(data.results).replace(/"/g,"'") + ')" '
+          + 'style="margin-top:8px;padding:8px 20px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">'
+          + '✅ 确认导入 ' + data.results.length + ' 条线索</button>';
+    container.innerHTML = html;
+  })
+  .catch(function() {
+    container.innerHTML = '<div style="color:#dc2626;font-size:13px">请求失败，请重试</div>';
+  });
+}
+
+function importCards(leads) {
+  fetch('/collect/import-cards', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({leads: leads}),
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    document.getElementById('cardResults').innerHTML =
+      '<div style="color:#16a34a;font-size:13px;font-weight:500">✅ 成功导入 ' + (d.db_new||0) + ' 条线索！<a href="/leads" style="color:#2563eb;margin-left:8px">查看客户列表</a></div>';
+  });
+}
+</script>
+{% endblock %}

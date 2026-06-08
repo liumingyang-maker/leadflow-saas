@@ -1,10 +1,7 @@
 {% extends "app/base.html" %}
 {% block title %}系统设置{% endblock %}
+{% block page_title %}系统设置{% endblock %}
 {% block content %}
-<div class="topbar">
-  <h1>系统设置</h1>
-  <span style="font-size:13px;color:#6b7280">保存后立即生效</span>
-</div>
 <div class="content" style="max-width:720px">
 
 {% if saved %}
@@ -25,13 +22,21 @@
           关闭时使用规则评分 + 固定邮件模板，完全免费
         </div>
       </div>
-      <label style="position:relative;display:inline-block;width:48px;height:26px">
+      <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer">
         <input type="checkbox" name="AI_ENABLED" id="aiToggle"
                {% if cfg.ai_enabled %}checked{% endif %}
-               onchange="document.getElementById('aiBox').style.display=this.checked?'':'none'"
-               style="opacity:0;width:0;height:0">
-        <span style="position:absolute;inset:0;background:{% if cfg.ai_enabled %}#2563eb{% else %}#d1d5db{% endif %};
-              border-radius:26px;cursor:pointer;transition:.3s"></span>
+               onchange="
+                 var on=this.checked;
+                 document.getElementById('aiBox').style.display=on?'':'none';
+                 document.getElementById('aiSliderBg').style.background=on?'#2563eb':'#d1d5db';
+                 document.getElementById('aiSliderDot').style.transform=on?'translateX(22px)':'translateX(2px)';
+               "
+               style="opacity:0;width:0;height:0;position:absolute">
+        <span id="aiSliderBg" style="position:absolute;inset:0;border-radius:26px;transition:.3s;
+              background:{% if cfg.ai_enabled %}#2563eb{% else %}#d1d5db{% endif %}"></span>
+        <span id="aiSliderDot" style="position:absolute;top:3px;width:20px;height:20px;background:#fff;
+              border-radius:50%;transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.3);
+              transform:{% if cfg.ai_enabled %}translateX(25px){% else %}translateX(3px){% endif %}"></span>
       </label>
     </div>
   </div>
@@ -59,25 +64,189 @@
     </div>
   </div>
 
-  <!-- 邮件 -->
+  <!-- 邮件发送（双通道）-->
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:14px">
-    <h3 style="font-size:15px;font-weight:600;margin-bottom:16px">✉ 邮件发送</h3>
-    {% for fname,label,typ,ph in [
-      ('smtp_user','Gmail 邮箱','email','yourname@gmail.com'),
-      ('smtp_pass','Gmail 应用密码（16位）','password','xxxx xxxx xxxx xxxx'),
-      ('sender_name','发件人姓名','text','例如：Li Ming'),
-      ('email_from_name','发件公司名（英文）','text','例如：ABC Export Co.'),
-    ] %}
-    <div style="margin-bottom:14px">
-      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">{{ label }}</label>
-      <input type="{{ typ }}" name="{{ fname }}" value="{{ cfg.get(fname,'') }}" placeholder="{{ ph }}"
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">✉ 给买家发开发信</h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:14px">选一种发信方式给海外买家发开发信。两种各有优劣，看你的量和预算。</p>
+
+    {% set ch = cfg.get('mail_channel','smtp') %}
+    <!-- 通道选择 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <label style="border:2px solid {{ '#2563eb' if ch=='smtp' else '#e2e8f0' }};border-radius:8px;padding:12px;cursor:pointer;display:block" id="optSmtp">
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="radio" name="mail_channel" value="smtp" {{ 'checked' if ch=='smtp' else '' }}
+                 onchange="switchChannel('smtp')" style="accent-color:#2563eb">
+          <span style="font-weight:600;font-size:14px">邮箱 SMTP</span>
+          <span style="font-size:11px;background:#dcfce7;color:#166534;padding:1px 7px;border-radius:8px">免费</span>
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-top:6px;line-height:1.5">
+          ✅ 免费、配置简单<br>⚠️ 群发易进垃圾箱、海外送达一般、无追踪<br>
+          <span style="color:#9ca3af">适合：起步 / 小量 / 单封发送</span>
+        </div>
+      </label>
+      <label style="border:2px solid {{ '#2563eb' if ch=='esp' else '#e2e8f0' }};border-radius:8px;padding:12px;cursor:pointer;display:block" id="optEsp">
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="radio" name="mail_channel" value="esp" {{ 'checked' if ch=='esp' else '' }}
+                 onchange="switchChannel('esp')" style="accent-color:#2563eb">
+          <span style="font-weight:600;font-size:14px">专业 ESP</span>
+          <span style="font-size:11px;background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:8px">推荐</span>
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-top:6px;line-height:1.5">
+          ✅ 送达率高、自带打开/点击追踪、可稳定群发<br>⚠️ 按量付费、要配独立域名+DKIM<br>
+          <span style="color:#9ca3af">适合：认真做邮件营销</span>
+        </div>
+      </label>
+    </div>
+
+    <!-- SMTP 配置 -->
+    <div id="boxSmtp" style="{{ '' if ch=='smtp' else 'display:none' }}">
+      <div style="background:#f8fafc;border-radius:6px;padding:8px 12px;font-size:12px;color:#6b7280;margin-bottom:12px">
+        常用：QQ企业邮箱 <code>smtp.exmail.qq.com:465</code> · Gmail <code>smtp.gmail.com:465</code> · 阿里云邮件推送 <code>smtpdm.aliyun.com:465</code>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">SMTP 服务器</label>
+          <input type="text" name="smtp_host" value="{{ cfg.get('smtp_host','') }}" placeholder="smtp.exmail.qq.com"
+                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        </div>
+        <div>
+          <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">端口</label>
+          <input type="text" name="smtp_port" value="{{ cfg.get('smtp_port','465') }}" placeholder="465"
+                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        </div>
+      </div>
+      {% for fname,label,typ,ph in [
+        ('smtp_user','发信邮箱账号','email','yourname@yourco.com'),
+        ('smtp_pass','邮箱密码 / 授权码','password','SMTP 授权码'),
+        ('smtp_from_name','发件人显示名','text','例如：Li Ming · ABC Export'),
+      ] %}
+      <div style="margin-bottom:12px">
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">{{ label }}</label>
+        <input type="{{ typ }}" name="{{ fname }}" value="{{ cfg.get(fname,'') }}" placeholder="{{ ph }}"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- ESP 配置 -->
+    <div id="boxEsp" style="{{ '' if ch=='esp' else 'display:none' }}">
+      <div style="margin-bottom:12px">
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">ESP 服务商</label>
+        <select name="esp_provider" onchange="switchEspProvider(this.value)"
+                style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          <option value="sendgrid" {{ 'selected' if cfg.get('esp_provider')=='sendgrid' else '' }}>SendGrid</option>
+          <option value="mailgun" {{ 'selected' if cfg.get('esp_provider')=='mailgun' else '' }}>Mailgun</option>
+        </select>
+      </div>
+      {% for fname,label,ph in [
+        ('esp_api_key','API Key','ESP 后台获取'),
+        ('esp_from_email','发信邮箱（需在ESP验证过的域名）','sales@yourdomain.com'),
+        ('esp_from_name','发件人显示名','例如：ABC Export Co.'),
+      ] %}
+      <div style="margin-bottom:12px">
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">{{ label }}</label>
+        <input type="text" name="{{ fname }}" value="{{ cfg.get(fname,'') }}" placeholder="{{ ph }}"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px{{ ';font-family:monospace' if fname=='esp_api_key' else '' }}">
+      </div>
+      {% endfor %}
+      <!-- Mailgun 专属：域名 + 区域 -->
+      <div id="mailgunExtra" style="{{ '' if cfg.get('esp_provider')=='mailgun' else 'display:none' }};display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">Mailgun 发信域名</label>
+          <input type="text" name="esp_domain" value="{{ cfg.get('esp_domain','') }}" placeholder="mg.yourdomain.com"
+                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        </div>
+        <div>
+          <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">区域</label>
+          <select name="esp_region" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            <option value="us" {{ 'selected' if cfg.get('esp_region','us')=='us' else '' }}>US</option>
+            <option value="eu" {{ 'selected' if cfg.get('esp_region')=='eu' else '' }}>EU</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 共用：公司名 + 签名 + 发信前验证 -->
+    <hr style="border:none;border-top:1px solid #f1f5f9;margin:14px 0">
+    <div style="margin-bottom:12px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">发件公司名（英文，开发信里用）</label>
+      <input type="text" name="email_from_name" value="{{ cfg.get('email_from_name','') }}" placeholder="例如：ABC Export Co."
              style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
     </div>
-    {% endfor %}
-    <div style="margin-bottom:4px">
+    <div style="margin-bottom:12px">
       <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">邮件签名（英文）</label>
       <textarea name="email_signature" rows="3"
                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical">{{ cfg.email_signature or '' }}</textarea>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+      <input type="checkbox" name="verify_before_send" {{ 'checked' if cfg.get('verify_before_send', True) else '' }} style="accent-color:#2563eb">
+      发信前自动验证邮箱真伪（过滤死邮箱，保护发信信誉，强烈建议开启）
+    </label>
+  </div>
+
+  <!-- 自动跟进序列 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h3 style="font-size:15px;font-weight:600">🔁 自动跟进</h3>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" name="followup_enabled" {{ 'checked' if cfg.get('followup_enabled') else '' }} style="accent-color:#2563eb">
+        开启
+      </label>
+    </div>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:12px;line-height:1.6">
+      开启后，给客户发出首封开发信，若客户一直没回复，系统会到点用「7天跟进」模板<b>自动再发一封</b>，
+      提高回复率、不用你手动盯。客户一旦被标记「已回复/已成交/已拒绝」，自动跟进立即停止。
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">首次跟进：首封后几天</label>
+        <input type="number" name="followup_days" value="{{ cfg.get('followup_days', 3) }}" min="1" max="60"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      </div>
+      <div>
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">二次跟进：再过几天（0=不发）</label>
+        <input type="number" name="followup_days2" value="{{ cfg.get('followup_days2', 0) }}" min="0" max="60"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      </div>
+    </div>
+  </div>
+
+  <!-- WhatsApp 官方 API（可选）-->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:14px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">💬 WhatsApp 官方 API <span style="font-size:12px;font-weight:400;color:#9ca3af">（可选 · 高级）</span></h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:14px;line-height:1.6">
+      不填也能用——客户详情页的「通过 WhatsApp 联系」是免费手动发送，零成本零封号。<br>
+      填了下面的官方 API（需 Meta 企业认证 + 服务商账号 + 独立号码，按量付费），才能<b>自动发送/群发</b>。
+    </p>
+    {% set wp = cfg.get('wa_provider','') %}
+    <div style="margin-bottom:12px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">服务商</label>
+      <select name="wa_provider" onchange="switchWa(this.value)"
+              style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        <option value="" {{ 'selected' if not wp else '' }}>不启用（用免费手动发送）</option>
+        <option value="twilio" {{ 'selected' if wp=='twilio' else '' }}>Twilio</option>
+        <option value="360dialog" {{ 'selected' if wp=='360dialog' else '' }}>360dialog</option>
+        <option value="cloud" {{ 'selected' if wp=='cloud' else '' }}>Meta Cloud API</option>
+      </select>
+    </div>
+    <div id="waTwilio" style="{{ '' if wp=='twilio' else 'display:none' }}">
+      {% for fname,label,ph in [('wa_account_sid','Account SID','ACxxxxxxxx'),('wa_auth_token','Auth Token','xxxxxxxx'),('wa_from','发送号码（带国家码）','+14155238886')] %}
+      <div style="margin-bottom:12px"><label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">{{ label }}</label>
+        <input type="text" name="{{ fname }}" value="{{ cfg.get(fname,'') }}" placeholder="{{ ph }}"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"></div>
+      {% endfor %}
+    </div>
+    <div id="wa360" style="{{ '' if wp=='360dialog' else 'display:none' }}">
+      <div style="margin-bottom:12px"><label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">360dialog API Key</label>
+        <input type="text" name="wa_api_key" value="{{ cfg.get('wa_api_key','') }}" placeholder="D360 API Key"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"></div>
+    </div>
+    <div id="waCloud" style="{{ '' if wp=='cloud' else 'display:none' }}">
+      {% for fname,label,ph in [('wa_phone_id','Phone Number ID','1234567890'),('wa_token','Access Token','EAAxxxxxxxx')] %}
+      <div style="margin-bottom:12px"><label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">{{ label }}</label>
+        <input type="text" name="{{ fname }}" value="{{ cfg.get(fname,'') }}" placeholder="{{ ph }}"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"></div>
+      {% endfor %}
     </div>
   </div>
 
@@ -89,6 +258,8 @@
       ('importyeti_api_key','ImportYeti API Key','海关进口数据，$99/月'),
       ('serpapi_key','SerpAPI Key','Google搜索采集，$50/月'),
       ('hunter_api_key','Hunter.io API Key','邮箱查找，免费50次/月'),
+      ('youtube_api_key','YouTube Data API Key','YouTube评论/简介获客，Google免费申请（不填用yt-dlp）'),
+      ('apify_token','Apify Token','TikTok获客（按量付费），apify.com 获取'),
     ] %}
     <div style="margin-bottom:14px">
       <label style="font-size:13px;font-weight:500;display:block;margin-bottom:4px">
@@ -107,4 +278,23 @@
   </button>
 </form>
 </div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function switchChannel(ch){
+  document.getElementById('boxSmtp').style.display = ch==='smtp' ? '' : 'none';
+  document.getElementById('boxEsp').style.display  = ch==='esp'  ? '' : 'none';
+  document.getElementById('optSmtp').style.borderColor = ch==='smtp' ? '#2563eb' : '#e2e8f0';
+  document.getElementById('optEsp').style.borderColor  = ch==='esp'  ? '#2563eb' : '#e2e8f0';
+}
+function switchEspProvider(p){
+  document.getElementById('mailgunExtra').style.display = p==='mailgun' ? 'grid' : 'none';
+}
+function switchWa(p){
+  document.getElementById('waTwilio').style.display = p==='twilio' ? '' : 'none';
+  document.getElementById('wa360').style.display    = p==='360dialog' ? '' : 'none';
+  document.getElementById('waCloud').style.display  = p==='cloud' ? '' : 'none';
+}
+</script>
 {% endblock %}

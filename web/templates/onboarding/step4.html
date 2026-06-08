@@ -60,6 +60,24 @@
     </div>
   </div>
 
+  <!-- Apollo.io -->
+  <div class="form-group">
+    <label>
+      Apollo.io API Key
+      <span style="font-weight:400;color:#16a34a;font-size:12px;margin-left:6px">
+        ✅ 注册免费送50条/月
+      </span>
+    </label>
+    <input type="text" name="apollo_api_key"
+           value="{{ cfg.get('apollo_api_key', '') }}"
+           placeholder="可留空">
+    <div class="hint">
+      全球2.7亿联系人，直接找到采购负责人邮箱。
+      获取：<a href="https://app.apollo.io/#/sign-up" target="_blank">app.apollo.io</a>
+      → 注册 → Settings → Integrations → API → Connect
+    </div>
+  </div>
+
   <!-- Hunter.io -->
   <div class="form-group">
     <label>

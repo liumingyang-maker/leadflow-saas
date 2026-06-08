@@ -5,67 +5,131 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}LeadFlow{% endblock %} — {{ session.get('company_name','') }}</title>
 <style>
+:root{
+  --brand:#2563eb; --brand-dark:#1d4ed8; --brand-light:#eef4ff;
+  --bg:#f4f6fb; --surface:#fff; --border:#e9edf3; --border-strong:#dde3ec;
+  --text:#1f2a37; --muted:#6b7280; --faint:#9aa3af;
+  --ok:#16a34a; --warn:#d97706; --danger:#dc2626;
+  --radius:12px; --radius-sm:8px;
+  --shadow:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.05);
+  --shadow-md:0 6px 20px rgba(16,24,40,.08);
+}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-     font-size:14px;color:#1a1a1a;background:#f4f5f7;line-height:1.5}
-a{color:#2563eb;text-decoration:none}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+     font-size:14px;color:var(--text);background:var(--bg);line-height:1.55}
+a{color:var(--brand);text-decoration:none}
 a:hover{text-decoration:underline}
-button{cursor:pointer;font-size:13px}
+button{cursor:pointer;font-size:13px;font-family:inherit}
+code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:.92em}
+
+/* ── 整体布局 ── */
 .layout{display:flex;min-height:100vh}
-.sidebar{width:210px;background:#1e293b;color:#cbd5e1;flex-shrink:0;display:flex;flex-direction:column}
-.main{flex:1;overflow:auto;display:flex;flex-direction:column}
-.sidebar-logo{padding:18px 16px 12px;border-bottom:1px solid #334155}
-.sidebar-logo .brand{font-size:16px;font-weight:700;color:#fff;letter-spacing:.3px}
-.sidebar-logo .company{font-size:11px;color:#64748b;margin-top:3px;
-                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sidebar nav{padding:10px 0;flex:1}
-.sidebar nav a{display:flex;align-items:center;gap:8px;padding:9px 16px;
-               color:#94a3b8;font-size:13px;transition:all .15s}
-.sidebar nav a:hover{background:#334155;color:#fff;text-decoration:none}
-.sidebar nav a.active{background:#2563eb;color:#fff}
-.nav-icon{width:16px;text-align:center;font-style:normal;flex-shrink:0}
-.sidebar-footer{padding:12px 16px;border-top:1px solid #334155;font-size:11px;color:#475569}
-.sidebar-footer a{color:#64748b;font-size:11px}
-.topbar{background:#fff;border-bottom:1px solid #e2e8f0;padding:0 24px;
-        height:52px;display:flex;align-items:center;gap:12px;flex-shrink:0}
-.topbar h1{font-size:16px;font-weight:600;flex:1}
-.content{padding:24px;flex:1}
-.btn{padding:6px 14px;border-radius:6px;border:1px solid #d1d5db;
-     background:#fff;color:#374151;font-size:13px;cursor:pointer;transition:all .15s}
-.btn:hover{background:#f9fafb}
-.btn-primary{background:#2563eb;color:#fff;border-color:#2563eb}
-.btn-primary:hover{background:#1d4ed8}
-.btn-sm{padding:4px 10px;border-radius:5px;font-size:12px;border:1px solid #d1d5db;background:#fff}
-.grade{display:inline-block;width:22px;height:22px;line-height:22px;
-       text-align:center;border-radius:4px;font-weight:700;font-size:12px}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* ── 侧边栏（浅色 + 分组）── */
+.sidebar{width:226px;background:var(--surface);border-right:1px solid var(--border);
+         flex-shrink:0;display:flex;flex-direction:column;height:100vh;position:sticky;top:0}
+.sidebar-logo{padding:18px 18px 14px;display:flex;align-items:center;gap:10px}
+.sidebar-logo .logo-mark{width:30px;height:30px;border-radius:8px;flex-shrink:0;
+        background:linear-gradient(135deg,var(--brand),#4f8cff);color:#fff;
+        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px}
+.sidebar-logo .brand{font-size:17px;font-weight:800;color:var(--text);letter-spacing:.2px;line-height:1.1}
+.sidebar-logo .tag{font-size:10px;color:var(--faint);margin-top:1px}
+.sidebar nav{padding:6px 10px 10px;flex:1;overflow-y:auto}
+.nav-group{padding:14px 10px 5px;font-size:11px;color:var(--faint);font-weight:700;letter-spacing:.5px}
+.sidebar nav a{display:flex;align-items:center;gap:9px;padding:9px 12px;margin:1px 0;
+               color:#475569;font-size:13.5px;border-radius:8px;transition:all .12s}
+.sidebar nav a:hover{background:#f3f5f9;color:var(--text);text-decoration:none}
+.sidebar nav a.active{background:var(--brand-light);color:var(--brand);font-weight:600}
+.nav-icon{width:18px;text-align:center;font-style:normal;flex-shrink:0;font-size:15px}
+.nav-new{margin-left:auto;background:#fee2e2;color:#dc2626;font-size:9px;font-weight:700;
+         padding:1px 5px;border-radius:6px}
+.sidebar-footer{padding:12px 18px;border-top:1px solid var(--border);font-size:11px;color:var(--faint)}
+.sidebar-footer a{color:var(--muted);font-size:11px}
+
+/* ── 顶栏（全局）── */
+.topbar{height:58px;background:var(--surface);border-bottom:1px solid var(--border);
+        padding:0 24px;display:flex;align-items:center;gap:14px;flex-shrink:0;
+        position:sticky;top:0;z-index:50}
+.topbar .page-title{font-size:17px;font-weight:700;flex:1;color:var(--text)}
+.topbar .tb-actions{display:flex;align-items:center;gap:10px}
+.acct-chip{display:flex;align-items:center;gap:9px;padding:5px 10px;border-radius:10px;
+           border:1px solid var(--border);background:#fbfcfe}
+.acct-av{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--brand),#4f8cff);
+         color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.acct-meta{line-height:1.15}
+.acct-name{font-size:12.5px;font-weight:600;color:var(--text);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct-sub{font-size:11px;color:var(--faint)}
+.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:10.5px;font-weight:600}
+.pill-trial{background:#fff7ed;color:#c2410c}
+.pill-active{background:#ecfdf5;color:#047857}
+
+/* ── 页面主体（可带右栏）── */
+.page{flex:1;overflow-y:auto;padding:22px 24px;display:flex;gap:20px;align-items:flex-start}
+.page-main{flex:1;min-width:0}
+.rightrail{width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;position:sticky;top:0}
+.rightrail:empty{display:none}
+@media(max-width:1100px){.rightrail{display:none}}
+.content{padding:0}     /* 兼容旧页面包裹 */
+
+/* ── 通用组件 ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+      box-shadow:var(--shadow)}
+.card-pad{padding:20px}
+.card-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin:4px 0 12px}
+.section-head h2{font-size:15px;font-weight:700}
+.btn{padding:8px 15px;border-radius:8px;border:1px solid var(--border-strong);
+     background:var(--surface);color:#374151;font-size:13px;cursor:pointer;transition:all .12s}
+.btn:hover{background:#f7f9fc}
+.btn-primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+.btn-primary:hover{background:var(--brand-dark)}
+.btn-sm{padding:5px 11px;border-radius:7px;font-size:12px}
+.grade{display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:6px;font-weight:700;font-size:12px}
 .grade-A{background:#dcfce7;color:#166534}
 .grade-B{background:#dbeafe;color:#1e40af}
 .grade-C{background:#fef9c3;color:#854d0e}
 .grade-D{background:#f3f4f6;color:#6b7280}
-.status-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:500}
+.status-badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:500}
 .status-new{background:#f0f9ff;color:#0369a1}
 .status-scored{background:#f5f3ff;color:#7c3aed}
 .status-contacted{background:#fff7ed;color:#c2410c}
 .status-replied{background:#f0fdf4;color:#166534}
 .status-converted{background:#ecfdf5;color:#065f46}
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
-.stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px}
-.stat-card .label{font-size:12px;color:#6b7280;margin-bottom:4px}
-.stat-card .value{font-size:24px;font-weight:700;color:#111827}
-.table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+
+/* 数据统计卡 */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+           padding:16px 18px;box-shadow:var(--shadow)}
+.stat-card .label{font-size:12px;color:var(--muted);margin-bottom:5px}
+.stat-card .value{font-size:26px;font-weight:800;color:var(--text);letter-spacing:-.5px}
+
+/* 表格 */
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 thead{background:#f8fafc}
-th{padding:10px 14px;text-align:left;font-weight:600;color:#6b7280;font-size:12px;border-bottom:1px solid #e2e8f0}
-td{padding:10px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+th{padding:11px 14px;text-align:left;font-weight:600;color:var(--muted);font-size:12px;border-bottom:1px solid var(--border)}
+td{padding:11px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#fafafa}
+tr:hover td{background:#fafbfd}
+
+/* 功能宫格卡片（工作台/采集等共用） */
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.feat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+           padding:16px;box-shadow:var(--shadow);transition:all .15s;cursor:pointer;display:block}
+.feat-card:hover{border-color:#c7d6f5;box-shadow:var(--shadow-md);transform:translateY(-1px);text-decoration:none}
+.feat-ic{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:10px}
+.feat-card .ft{font-size:14px;font-weight:700;color:var(--text)}
+.feat-card .fd{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
+
+/* toast / 任务条 */
 #toast{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px}
-.toast-item{padding:10px 16px;border-radius:7px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.toast-item{padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:var(--shadow-md)}
 .toast-ok{background:#ecfdf5;color:#065f46;border:1px solid #86efac}
 .toast-err{background:#fef2f2;color:#991b1b;border:1px solid #fca5a5}
 .toast-info{background:#eff6ff;color:#1e40af;border:1px solid #93c5fd}
-.task-bar{display:none;position:fixed;bottom:16px;right:16px;background:#1e293b;
-          color:#e2e8f0;border-radius:8px;padding:12px 16px;font-size:13px;z-index:9999}
+.task-bar{display:none;position:fixed;bottom:16px;right:16px;background:#0f172a;
+          color:#e2e8f0;border-radius:10px;padding:12px 16px;font-size:13px;z-index:9999;box-shadow:var(--shadow-md)}
 .task-bar.show{display:block}
 </style>
 {% block extra_style %}{% endblock %}
@@ -73,12 +137,31 @@ tr:hover td{background:#fafafa}
 <body>
 <div class="layout">
 <aside class="sidebar">
-  <div class="sidebar-logo">
-    <div class="brand">LeadFlow</div>
-    <div class="company">{{ session.get('company_name','') }}</div>
-  </div>
+  <a href="/workbench" class="sidebar-logo" style="text-decoration:none">
+    <div class="logo-mark">L</div>
+    <div>
+      <div class="brand">LeadFlow</div>
+      <div class="tag">外贸智能获客</div>
+    </div>
+  </a>
   <nav>
-    <a href="/leads" class="{{ 'active' if request.endpoint in ('leads_list','dashboard') }}">
+    <a href="/workbench" class="{{ 'active' if request.endpoint == 'workbench' }}">
+      <i class="nav-icon">🏠</i> 工作台
+    </a>
+
+    <div class="nav-group">线索获取</div>
+    <a href="/collect" class="{{ 'active' if request.endpoint == 'collect_page' }}">
+      <i class="nav-icon">🔍</i> 采集渠道
+    </a>
+    <a href="/import" class="{{ 'active' if 'import' in request.endpoint }}">
+      <i class="nav-icon">📥</i> 导入展会数据
+    </a>
+    <a href="/inbound" class="{{ 'active' if 'inbound' in request.endpoint }}">
+      <i class="nav-icon">🔗</i> 独立站询盘 <span class="nav-new">NEW</span>
+    </a>
+
+    <div class="nav-group">客户管理</div>
+    <a href="/leads" class="{{ 'active' if request.endpoint in ('leads_list','dashboard','lead_detail') }}">
       <i class="nav-icon">📋</i> 客户列表
     </a>
     <a href="/stats" class="{{ 'active' if request.endpoint == 'stats_page' }}">
@@ -87,34 +170,56 @@ tr:hover td{background:#fafafa}
     <a href="/export" target="_blank">
       <i class="nav-icon">⬇️</i> 导出 CSV
     </a>
-    <a href="#" onclick="triggerTask('collect')">
-      <i class="nav-icon">🔍</i> 立即采集
+
+    <div class="nav-group">触达转化</div>
+    <a href="/email-templates" class="{{ 'active' if request.endpoint == 'email_templates' }}">
+      <i class="nav-icon">✉️</i> 邮件模板
     </a>
-    <a href="#" onclick="triggerTask('score')">
+    <a href="#" onclick="triggerTask('score');return false;">
       <i class="nav-icon">⭐</i> 立即评分
     </a>
-    <a href="#" onclick="triggerTask('all')">
+    <a href="#" onclick="triggerTask('all');return false;">
       <i class="nav-icon">🚀</i> 全流程运行
     </a>
-    <a href="/email-templates" class="{{ 'active' if request.endpoint == 'email_templates' }}">
-      <i class="nav-icon">✉</i> 邮件模板
-    </a>
-    <a href="/import" class="{{ 'active' if 'import' in request.endpoint }}">
-      <i class="nav-icon">📥</i> 导入展会数据
-    </a>
+
+    <div class="nav-group">系统</div>
     <a href="/settings" class="{{ 'active' if request.endpoint == 'settings' }}">
       <i class="nav-icon">⚙️</i> 系统设置
     </a>
   </nav>
   <div class="sidebar-footer">
-    LeadFlow v1.0<br>
-    <a href="/logout">退出登录</a>
+    LeadFlow v1.0 · <a href="/logout">退出登录</a>
   </div>
 </aside>
+
 <div class="main">
-  {% block content %}{% endblock %}
+  <header class="topbar">
+    <div class="page-title">{% block page_title %}{% endblock %}</div>
+    <div class="tb-actions">
+      {% block topbar_actions %}{% endblock %}
+      <div class="acct-chip">
+        <div class="acct-av">{{ (acct.company or 'L')[:1] | upper }}</div>
+        <div class="acct-meta">
+          <div class="acct-name">{{ acct.company or session.get('company_name','') or session.get('tenant_email','账户') }}</div>
+          <div class="acct-sub">
+            {% if acct.status == 'active' %}
+            <span class="pill pill-active">正式版</span>
+            {% else %}
+            <span class="pill pill-trial">试用 · 剩 {{ acct.trial_days_left if acct.trial_days_left is not none else '—' }} 天</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="page-main">{% block content %}{% endblock %}</div>
+    <aside class="rightrail">{% block rightrail %}{% endblock %}</aside>
+  </main>
 </div>
 </div>
+
 <div id="toast"></div>
 <div class="task-bar" id="taskBar"><div id="taskMsg">任务运行中...</div></div>
 <script>
@@ -140,7 +245,7 @@ function deleteLead(id) {
 }
 let _poll=null;
 function triggerTask(step) {
-  const labels={collect:'采集',score:'评分',all:'全流程运行'};
+  const labels={collect:'采集',score:'评分',enrich:'批量找邮箱',all:'全流程运行'};
   if(!confirm('确认启动「'+labels[step]+'」？')) return;
   fetch('/run/'+step,{method:'POST'}).then(r=>r.json()).then(d=>{
     if(!d.ok){toast('启动失败','err');return;}

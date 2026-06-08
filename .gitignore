@@ -1,13 +1,22 @@
-config.py
+# 密钥/敏感（绝不上传）
+.env
 secret_key.bin
+
+# 运行数据（每个部署环境各自的，不上传）
 tenants/
 *.db
+*.db-wal
+*.db-shm
 *.log
+
+# Python
 __pycache__/
 *.pyc
-.env
+
+# 打包/系统
 tmp/
 dist/
 build/
 *.spec
 .DS_Store
+.claude/
