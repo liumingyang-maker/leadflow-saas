@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>技术架构 — LeadFlow 管理后台</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;
+     background:#0f172a;min-height:100vh;color:#e2e8f0;font-size:14px}
+a{text-decoration:none}
+.topbar{background:#1e293b;border-bottom:1px solid #334155;padding:0 32px;
+        height:56px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:20}
+.topbar .brand{font-size:18px;font-weight:700;color:#2563eb}
+.topbar .title{font-size:14px;color:#64748b}
+.topbar .nav{margin-left:auto;display:flex;gap:8px}
+.topbar .nav a{font-size:13px;color:#94a3b8;padding:6px 14px;border:1px solid #334155;border-radius:6px}
+.topbar .nav a:hover{color:#e2e8f0;border-color:#475569}
+.content{max-width:1240px;margin:28px auto;padding:0 24px}
+.page-head{margin-bottom:22px}
+.page-head h1{font-size:22px;font-weight:700;color:#fff}
+.page-head p{font-size:13px;color:#64748b;margin-top:6px;line-height:1.7;max-width:760px}
+
+/* 图例 */
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0 6px}
+.legend .item{display:flex;align-items:center;gap:7px;font-size:12px;color:#94a3b8}
+.dot{width:9px;height:9px;border-radius:50%}
+
+/* 流程条 */
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:18px 0 28px}
+.flow .node{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;
+            min-width:130px;text-align:center;flex:1}
+.flow .node .ic{font-size:22px}
+.flow .node .nm{font-size:13px;font-weight:600;color:#fff;margin-top:4px}
+.flow .node .ct{font-size:11px;color:#64748b;margin-top:2px}
+.flow .arrow{display:flex;align-items:center;color:#475569;font-size:18px;padding:0 8px}
+
+/* 阶段 */
+.stage{margin-bottom:26px}
+.stage-head{display:flex;align-items:baseline;gap:10px;margin-bottom:12px;
+            padding-bottom:8px;border-bottom:1px solid #1e293b}
+.stage-head .badge-num{background:#2563eb;color:#fff;width:24px;height:24px;border-radius:7px;
+        display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.stage-head h2{font-size:16px;font-weight:700;color:#fff}
+.stage-head .sd{font-size:12px;color:#64748b}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+
+/* 步骤卡 */
+.step{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:16px;transition:.15s}
+.step:hover{border-color:#475569}
+.step-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.step-name{font-size:14px;font-weight:600;color:#fff}
+.step-desc{font-size:12px;color:#94a3b8;margin-top:3px;line-height:1.5}
+.sbadge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;
+        font-size:11px;font-weight:600;white-space:nowrap;flex-shrink:0}
+.kv{margin-top:11px;font-size:12px}
+.kv .k{color:#64748b;font-size:11px;margin-bottom:2px}
+.kv .algo{color:#cbd5e1;line-height:1.55;background:#0f172a;border:1px solid #243349;
+          border-radius:6px;padding:7px 10px}
+.kv .file{color:#7dd3fc;font-family:'Consolas',monospace;font-size:11.5px;word-break:break-all}
+.gh{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.gh a{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#cbd5e1;
+      background:#0f172a;border:1px solid #334155;border-radius:6px;padding:4px 9px}
+.gh a:hover{border-color:#2563eb;color:#fff}
+.gh .star{color:#fbbf24;font-size:11px}
+.gh .tp{color:#64748b;font-size:10px}
+.alt{margin-top:8px;font-size:11px;color:#64748b}
+.alt .lbl{color:#475569}
+.conf{margin-top:9px;font-size:11px;color:#34d399}
+.foot{margin:30px 0 10px;font-size:12px;color:#475569;text-align:center;line-height:1.8}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">LeadFlow</div>
+  <div class="title">技术架构 · 数据流水线</div>
+  <div class="nav">
+    <a href="/admin">← 客户管理</a>
+    <a href="/admin/logout">退出</a>
+  </div>
+</div>
+
+<div class="content">
+  <div class="page-head">
+    <h1>🔬 数据流水线技术架构</h1>
+    <p>从「发现线索」到「触达成交」的完整 6 阶段获客流水线。每个环节对标业界知名开源项目/算法，
+       并保留可切换接口——将来想换更强的算法，只改 <code style="color:#7dd3fc">web/pipeline_config.py</code> 对应配置 + 替换模块实现即可。</p>
+
+    <!-- 图例 -->
+    <div class="legend">
+      {% for key, m in meta.items() %}
+      <div class="item"><span class="dot" style="background:{{ m.dot }}"></span>{{ m.label }}
+        （{{ counts.get(key, 0) }}）</div>
+      {% endfor %}
+      <div class="item" style="color:#475569">· 共 {{ counts.total }} 个能力点</div>
+    </div>
+  </div>
+
+  <!-- 流程条 -->
+  <div class="flow">
+    {% for st in stages %}
+    <div class="node">
+      <div class="ic">{{ st.icon }}</div>
+      <div class="nm">{{ st.num }}. {{ st.name }}</div>
+      <div class="ct">{{ st.steps|length }} 项能力</div>
+    </div>
+    {% if not loop.last %}<div class="arrow">→</div>{% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- 各阶段详情 -->
+  {% for st in stages %}
+  <div class="stage">
+    <div class="stage-head">
+      <span class="badge-num">{{ st.num }}</span>
+      <h2>{{ st.icon }} {{ st.name }}</h2>
+      <span class="sd">{{ st.desc }}</span>
+    </div>
+    <div class="grid">
+      {% for s in st.steps %}
+      {% set m = meta.get(s.status, meta['todo']) %}
+      <div class="step">
+        <div class="step-top">
+          <div>
+            <div class="step-name">{{ s.name }}</div>
+            <div class="step-desc">{{ s.desc }}</div>
+          </div>
+          <span class="sbadge" style="background:{{ m.bg }};color:{{ m.color }}">
+            <span class="dot" style="background:{{ m.dot }}"></span>{{ m.label }}
+          </span>
+        </div>
+
+        <div class="kv">
+          <div class="k">算法 / 实现</div>
+          <div class="algo">{{ s.algorithm }}</div>
+        </div>
+
+        <div class="kv">
+          <div class="k">接口文件</div>
+          <div class="file">{{ s.file }}</div>
+        </div>
+
+        {% if s.github %}
+        <div class="gh">
+          {% for g in s.github %}
+          <a href="{{ g.url }}" target="_blank" rel="noopener">
+            {{ g.name }}
+            {% if g.stars and g.stars != '—' %}<span class="star">★{{ g.stars }}</span>{% endif %}
+            <span class="tp">{{ '对标' if g.type=='inspiration' else ('服务' if g.type=='service' else '依赖') }}</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if s.alternatives %}
+        <div class="alt"><span class="lbl">可替换为：</span>{{ s.alternatives | join(' · ') }}</div>
+        {% endif %}
+
+        {% if s.configurable %}<div class="conf">⚙ 算法可切换</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="foot">
+    实现策略：以上「对标」项目多为<b>原生等价实现</b>（用 requests/curl_cffi/Serper/DeepSeek/Hunter 复刻核心能力），<br>
+    零额外重依赖、即装即用；标注「需境外节点」的渠道在境外服务器部署后自动切换为真实采集。
+  </div>
+</div>
+</body>
+</html>

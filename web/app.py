@@ -438,10 +438,16 @@ def workbench():
     except Exception:
         email_stats = {"sent": 0, "opened": 0, "open_rate": 0.0}
     recent_leads, _ = db.search_leads(limit=6, offset=0)
+    try:
+        from pipeline_config import pipeline_summary
+        pipeline = pipeline_summary()
+    except Exception:
+        pipeline = []
     return render_template("app/workbench.html", cfg=current_cfg(),
                            stats=db.get_stats(),
                            email_stats=email_stats,
                            recent_leads=recent_leads,
+                           pipeline=pipeline,
                            history=db.get_collection_history(limit=5))
 
 
@@ -1481,6 +1487,15 @@ def admin_logout():
 @admin_required
 def admin_panel():
     return render_template("admin/panel.html", tenants=admin_db.all_tenants())
+
+
+@app.route("/admin/pipeline")
+@admin_required
+def admin_pipeline():
+    from pipeline_config import PIPELINE_STAGES, STATUS_META, pipeline_counts
+    return render_template("admin/pipeline.html",
+                           stages=PIPELINE_STAGES, meta=STATUS_META,
+                           counts=pipeline_counts())
 
 
 @app.route("/admin/tenant/<tid>/activate", methods=["POST"])

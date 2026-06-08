@@ -115,6 +115,24 @@
   </div>
 </div>
 
+<!-- 系统能力（数据流水线简版）-->
+{% if pipeline %}
+<div class="card card-pad">
+  <div class="card-title">⚡ 系统能力</div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:10px">完整 6 阶段获客流水线，从找客户到自动跟进全打通：</p>
+  {% for st in pipeline %}
+  <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid #f3f5f9">
+    <span style="font-size:16px;width:22px;text-align:center">{{ st.icon }}</span>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:600">{{ st.num }}. {{ st.name }}</div>
+    </div>
+    <span style="font-size:11px;color:var(--brand);background:var(--brand-light);padding:1px 8px;border-radius:8px">{{ st.count }} 项</span>
+  </div>
+  {% endfor %}
+  <p style="font-size:11px;color:var(--faint);margin-top:10px">每个环节对标业界知名开源方案，持续升级中。</p>
+</div>
+{% endif %}
+
 <!-- 使用教程 -->
 <div class="card card-pad">
   <div class="card-title">📘 快速上手</div>
