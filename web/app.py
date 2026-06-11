@@ -3,6 +3,7 @@ web/app.py — SaaS 主应用
 """
 import sys
 import os
+import re
 import json
 import time
 import threading
@@ -1191,6 +1192,142 @@ def task_status(task_id):
 
 
 # ─────────────────────────────────────────────────────────
+# 渠道雷达（竞品经销商挖掘 + 情报卡 + 定期监控）
+# ─────────────────────────────────────────────────────────
+
+def _radar_snapshot(distributors: list, intel: dict) -> str:
+    """根据经销商名单 + 情报卡算一个指纹，用来比对竞品是否有变化。"""
+    import hashlib
+    names = sorted((d.get("company_name") or "").strip().lower()
+                   for d in (distributors or []))
+    blob = "|".join(names) + "##" + (intel or {}).get("main_products", "")
+    return hashlib.md5(blob.encode("utf-8", "ignore")).hexdigest()
+
+
+@app.route("/radar")
+@onboarding_required
+def radar():
+    tid = current_tid()
+    cfg = current_cfg()
+    competitors = admin_db.list_competitors(tid)
+    has_keys = bool(cfg.get("deepseek_api_key"))
+    return render_template("app/radar.html", competitors=competitors,
+                           cfg=cfg, has_keys=has_keys)
+
+
+@app.route("/radar/run", methods=["POST"])
+@onboarding_required
+def radar_run():
+    _cleanup_tasks()
+    tid  = current_tid()
+    cfg  = current_cfg()
+    body = request.get_json(silent=True) or {}
+    raw_urls    = body.get("urls", "")
+    auto_search = bool(body.get("auto_search"))
+    monitor     = bool(body.get("monitor", True))
+    freq        = int(body.get("frequency_days", 7) or 7)
+
+    # 解析用户填的网址（换行/逗号分隔）
+    urls = []
+    if isinstance(raw_urls, list):
+        urls = [u for u in raw_urls if u]
+    elif isinstance(raw_urls, str):
+        urls = [u.strip() for u in re.split(r"[\n,;\s]+", raw_urls) if u.strip()]
+
+    if not urls and not auto_search:
+        return jsonify({"ok": False, "error": "请填竞品网址，或勾选「让系统自动搜竞品」"}), 400
+    if not cfg.get("deepseek_api_key"):
+        return jsonify({"ok": False, "error": "渠道雷达需要先在「系统设置」填 DeepSeek API Key"}), 400
+
+    task_id = f"radar_{datetime.now().strftime('%H%M%S')}_{_uuid.uuid4().hex[:4]}"
+    with _task_lock:
+        _task_status[task_id] = {"status": "running", "log": [], "_ts": time.time()}
+
+    def run_bg():
+        logs = []
+        try:
+            from module1_collectors.competitor_radar import CompetitorRadar
+            from module2_cleaner import DataCleaner
+
+            radar_eng = CompetitorRadar()
+            radar_eng.deepseek_key    = cfg.get("deepseek_api_key", "")
+            radar_eng.serper_key      = cfg.get("serpapi_key", "")
+            radar_eng.hunter_key      = cfg.get("hunter_api_key", "")
+            radar_eng.product_name    = cfg.get("product_name", "")
+            radar_eng.search_keywords = cfg.get("search_keywords", [])
+            radar_eng.proxy           = cfg.get("radar_proxy", "")
+
+            out = radar_eng.run(urls=urls, auto_search=auto_search,
+                                want_intel=True, max_competitors=8)
+
+            dist = out.get("distributors", [])
+            if dist:
+                st = DataCleaner().run(dist, source="competitor_radar",
+                                       db_path=tenant_ctx.get_db_path(tid))
+                logs.append(f"经销商入库：新增 {st.get('db_new',0)} 家"
+                            f"（提取 {len(dist)} 条，去重后写入）")
+            else:
+                logs.append("未提取到经销商（竞品页可能没有公开经销商名单，或被反爬拦截）")
+
+            # 保存竞品情报卡 + 纳入监控
+            intel_by_host = {c.get("competitor"): c for c in out.get("intel", [])}
+            for site in out.get("sites", []):
+                from urllib.parse import urlparse
+                host = urlparse(site).netloc.replace("www.", "")
+                card = intel_by_host.get(host, {})
+                site_dist = [d for d in dist
+                             if host in (d.get("notes") or "")]
+                snap = _radar_snapshot(site_dist, card)
+                admin_db.upsert_competitor(
+                    tid, url=site, host=host,
+                    name=card.get("main_products", "")[:80],
+                    intel=card, distributor_count=len(site_dist),
+                    snapshot_hash=snap, frequency_days=freq, monitor=monitor)
+            logs.append(f"竞品情报卡：{len(out.get('intel', []))} 张"
+                        + ("，已纳入定期监控" if monitor else ""))
+
+            if out.get("errors"):
+                logs.append("部分竞品处理出错：" + "；".join(out["errors"][:3]))
+
+            with _task_lock:
+                _task_status[task_id] = {"status": "done", "log": logs,
+                                         "_ts": time.time()}
+        except Exception as e:
+            with _task_lock:
+                _task_status[task_id] = {"status": "error", "log": [str(e)],
+                                         "_ts": time.time()}
+
+    threading.Thread(target=run_bg, daemon=True).start()
+    return jsonify({"ok": True, "task_id": task_id})
+
+
+@app.route("/radar/<cid>/monitor", methods=["POST"])
+@onboarding_required
+def radar_monitor(cid):
+    tid  = current_tid()
+    body = request.get_json(silent=True) or {}
+    on   = bool(body.get("monitor", True))
+    freq = body.get("frequency_days")
+    freq = int(freq) if freq else None
+    admin_db.set_competitor_monitor(tid, cid, on, frequency_days=freq)
+    return jsonify({"ok": True})
+
+
+@app.route("/radar/<cid>/seen", methods=["POST"])
+@onboarding_required
+def radar_seen(cid):
+    admin_db.clear_competitor_change(current_tid(), cid)
+    return jsonify({"ok": True})
+
+
+@app.route("/radar/<cid>/delete", methods=["POST"])
+@onboarding_required
+def radar_delete(cid):
+    admin_db.delete_competitor(current_tid(), cid)
+    return jsonify({"ok": True})
+
+
+# ─────────────────────────────────────────────────────────
 # 系统设置
 # ─────────────────────────────────────────────────────────
 
@@ -1201,9 +1338,45 @@ def settings():
     cfg   = current_cfg()
     saved = False
     if request.method == "POST":
+        # ── 第二批：公司/产品/目标市场（原本只能在入驻向导填，现可随时改）──
+        if request.form.get("save_profile") == "1":
+            cfg["company_name"] = request.form.get("company_name", "").strip()[:100]
+            cfg["industry"]     = request.form.get("industry", cfg.get("industry", ""))
+            cfg["product_name"] = request.form.get("product_name", "").strip()[:100]
+            cfg["product_desc"] = request.form.get("product_desc", "").strip()[:500]
+            hs_raw = request.form.get("hs_codes", "")
+            cfg["hs_codes"] = [h.strip() for h in
+                               hs_raw.replace("，", ",").split(",") if h.strip()][:20]
+            kw_raw = request.form.get("search_keywords", "")
+            cfg["search_keywords"] = [k.strip() for k in
+                                      kw_raw.replace("，", ",").replace("\r", "")
+                                      .replace(",", "\n").split("\n") if k.strip()][:30]
+            try:
+                selected_regions   = json.loads(request.form.get("selected_regions", "[]"))
+                excluded_countries = json.loads(request.form.get("excluded_countries", "[]"))
+            except Exception:
+                selected_regions, excluded_countries = [], []
+            if selected_regions:
+                excluded_set = set(excluded_countries)
+                final = [c for r in selected_regions
+                           for c in tenant_ctx.REGIONS.get(r, [])
+                           if c not in excluded_set]
+                cfg["selected_regions"]   = selected_regions
+                cfg["excluded_countries"] = excluded_countries
+                cfg["target_countries"]   = final
+                cfg["market_priority"]    = {
+                    "tier1": final[:3], "tier2": final[3:8], "tier3": final[8:],
+                }
+            session["company_name"] = cfg["company_name"]
+            admin_db.update_tenant(tid, company_name=cfg["company_name"],
+                                   industry=cfg["industry"])
+            tenant_ctx.save_config(tid, cfg)
+            return render_template("app/settings.html", cfg=cfg, saved=True,
+                                   regions=tenant_ctx.REGIONS,
+                                   industries=tenant_ctx.INDUSTRY_OPTIONS)
         for k in ("importyeti_api_key", "serpapi_key", "hunter_api_key",
                   "deepseek_api_key", "anthropic_api_key", "apollo_api_key",
-                  "youtube_api_key", "apify_token",
+                  "youtube_api_key", "apify_token", "radar_proxy",
                   "smtp_user", "smtp_pass", "sender_name", "email_from_name",
                   # 双通道发信
                   "smtp_host", "smtp_port", "smtp_from_name", "smtp_from_email",
@@ -1234,7 +1407,8 @@ def settings():
         session["company_name"] = cfg.get("company_name", "")
         saved = True
     return render_template("app/settings.html", cfg=cfg, saved=saved,
-                           regions=tenant_ctx.REGIONS)
+                           regions=tenant_ctx.REGIONS,
+                           industries=tenant_ctx.INDUSTRY_OPTIONS)
 
 
 # ─────────────────────────────────────────────────────────
@@ -1729,6 +1903,79 @@ def start_followup_scheduler(interval: int = 1800) -> None:
 
 # 模块加载即启动（run.py 导入或 WSGI 部署都会触发）
 start_followup_scheduler()
+
+
+# ─────────────────────────────────────────────────────────
+# 渠道雷达：竞品定期监控（后台调度）
+# ─────────────────────────────────────────────────────────
+
+def process_due_competitors() -> int:
+    """重扫到点的监控竞品，更新情报卡 + 入库新经销商 + 标记变化。"""
+    due = admin_db.get_due_competitors(limit=20)
+    if not due:
+        return 0
+    from module1_collectors.competitor_radar import CompetitorRadar
+    from module2_cleaner import DataCleaner
+    from urllib.parse import urlparse
+    handled = 0
+    for c in due:
+        tid = c["tenant_id"]
+        try:
+            cfg = tenant_ctx.load_config(tid)
+            if not cfg.get("deepseek_api_key"):
+                # 没 Key 没法重扫，推后一周避免反复空转
+                admin_db.upsert_competitor(
+                    tid, c["url"], c["host"], c.get("name", ""),
+                    intel={}, distributor_count=c.get("distributor_count", 0),
+                    snapshot_hash=c.get("snapshot_hash", ""),
+                    frequency_days=c.get("frequency_days", 7), monitor=True)
+                continue
+            eng = CompetitorRadar()
+            eng.deepseek_key = cfg.get("deepseek_api_key", "")
+            eng.serper_key   = cfg.get("serpapi_key", "")
+            eng.proxy        = cfg.get("radar_proxy", "")
+            out = eng.run(urls=[c["url"]], auto_search=False,
+                          want_intel=True, max_competitors=1)
+            dist = out.get("distributors", [])
+            if dist:
+                DataCleaner().run(dist, source="competitor_radar",
+                                  db_path=tenant_ctx.get_db_path(tid))
+            card = out.get("intel", [{}])[0] if out.get("intel") else {}
+            snap = _radar_snapshot(dist, card)
+            admin_db.upsert_competitor(
+                tid, c["url"], c["host"], c.get("name", ""),
+                intel=card, distributor_count=len(dist), snapshot_hash=snap,
+                frequency_days=c.get("frequency_days", 7), monitor=True)
+            handled += 1
+            print(f"[radar] 已重扫监控竞品 {c['host']} → 经销商 {len(dist)} 家")
+        except Exception as e:
+            print(f"[radar] 监控 {c.get('host','?')} 异常: {e}")
+    return handled
+
+
+_radar_started = False
+
+
+def start_radar_scheduler(interval: int = 3600) -> None:
+    """每小时扫一次到点的监控竞品（实际重扫频率由每个竞品的 next_check_at 决定）。"""
+    global _radar_started
+    if _radar_started:
+        return
+    _radar_started = True
+
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                process_due_competitors()
+            except Exception as e:
+                print(f"[radar] 调度异常: {e}")
+
+    threading.Thread(target=_loop, daemon=True).start()
+    print("[radar] 竞品监控调度已启动")
+
+
+start_radar_scheduler()
 
 
 # ─────────────────────────────────────────────────────────

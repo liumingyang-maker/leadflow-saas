@@ -11,6 +11,104 @@
 </div>
 {% endif %}
 
+<!-- ━━ 第二批：公司 / 产品 / 目标市场（可随时重填，原来只能在入驻向导填）━━ -->
+<form method="POST" id="profileForm">
+  <input type="hidden" name="save_profile" value="1">
+  <input type="hidden" name="selected_regions" id="selRegions">
+  <input type="hidden" name="excluded_countries" id="excCountries">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:14px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">🏢 公司 · 产品 · 目标市场</h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:16px">
+      入驻时填过的核心信息，直接影响采集关键词和目标国家。随时可改，保存后下次采集生效。
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">公司名称</label>
+        <input type="text" name="company_name" value="{{ cfg.get('company_name','') }}"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">所属行业</label>
+        <select name="industry" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+          {% for val,label in industries %}
+          <option value="{{ val }}" {% if cfg.get('industry')==val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">主营产品</label>
+      <input type="text" name="product_name" value="{{ cfg.get('product_name','') }}"
+             placeholder="例：CG/CB 系列摩托车发动机"
+             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+    </div>
+    <div style="margin-top:14px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">产品简介 <span style="font-weight:400;color:#9ca3af">（给 AI 理解你的产品用）</span></label>
+      <textarea name="product_desc" rows="2"
+                style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical">{{ cfg.get('product_desc','') }}</textarea>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
+      <div>
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">HS 海关编码 <span style="font-weight:400;color:#9ca3af">（逗号分隔）</span></label>
+        <input type="text" name="hs_codes" value="{{ cfg.get('hs_codes',[])|join(', ') }}"
+               placeholder="例：8407, 8408, 8714"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">排除的国家 <span style="font-weight:400;color:#9ca3af">（逗号分隔，可空）</span></label>
+        <input type="text" id="excInput" value="{{ cfg.get('excluded_countries',[])|join(', ') }}"
+               placeholder="例：印度, 美国"
+               style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:5px">搜索关键词 <span style="font-weight:400;color:#9ca3af">（每行一个，用于采集）</span></label>
+      <textarea name="search_keywords" rows="3"
+                placeholder="motorcycle engine&#10;CG engine&#10;摩托车发动机"
+                style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical">{% for k in cfg.get('search_keywords',[]) %}{{ k }}
+{% endfor %}</textarea>
+    </div>
+
+    <div style="margin-top:16px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:8px">目标市场（勾选大洲，系统自动展开为国家清单，排除上方填的国家）</label>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+        {% for region in regions %}
+        <label style="display:flex;align-items:center;gap:7px;font-size:13px;color:#374151;
+                      border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;cursor:pointer">
+          <input type="checkbox" class="rg-check" value="{{ region }}"
+                 {% if region in cfg.get('selected_regions',[]) %}checked{% endif %}
+                 style="width:15px;height:15px;accent-color:#2563eb">
+          {{ region }} <span style="color:#9ca3af;font-size:11px">{{ regions[region]|length }}国</span>
+        </label>
+        {% endfor %}
+      </div>
+      <p style="font-size:12px;color:#9ca3af;margin-top:8px">
+        当前目标国家数：<b style="color:#2563eb">{{ cfg.get('target_countries',[])|length }}</b> 个
+      </p>
+    </div>
+
+    <button type="submit" style="margin-top:16px;width:100%;padding:11px;background:#2563eb;color:#fff;
+            border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer">
+      保存公司 / 产品 / 目标市场
+    </button>
+  </div>
+</form>
+
+<script>
+document.getElementById('profileForm').addEventListener('submit', function(){
+  var regs=[];
+  document.querySelectorAll('.rg-check:checked').forEach(function(c){ regs.push(c.value); });
+  document.getElementById('selRegions').value = JSON.stringify(regs);
+  var exc = (document.getElementById('excInput').value || '')
+            .split(/[，,\n]/).map(function(s){return s.trim();}).filter(Boolean);
+  document.getElementById('excCountries').value = JSON.stringify(exc);
+});
+</script>
+
 <form method="POST">
 
   <!-- AI 总开关 -->
@@ -270,6 +368,18 @@
              style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace">
     </div>
     {% endfor %}
+  </div>
+
+  <!-- 渠道雷达：代理（高级·可选）-->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:14px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">🛰️ 渠道雷达代理 <span style="font-size:12px;font-weight:400;color:#9ca3af">（可选 · 高级，一般留空）</span></h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:16px">
+      留空就用服务器本机 IP 抓取（推荐）。只有当你要大量爬国内强反爬网站、且买了付费代理时，
+      才在这里粘贴代理地址，格式：<code style="background:#f3f4f6;padding:1px 5px;border-radius:3px">http://用户名:密码@host:端口</code>。不懂就别填。
+    </p>
+    <input type="text" name="radar_proxy" value="{{ cfg.get('radar_proxy','') }}"
+           placeholder="留空 = 走服务器本机 IP（推荐）"
+           style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace">
   </div>
 
   <button type="submit" style="width:100%;padding:12px;background:#2563eb;color:#fff;

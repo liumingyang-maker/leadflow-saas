@@ -97,6 +97,28 @@ def init():
                 click_count INTEGER DEFAULT 0,
                 last_click  TEXT
             );
+
+            -- 渠道雷达：监控中的竞品（存情报快照 + 比对变化）
+            CREATE TABLE IF NOT EXISTS competitors (
+                id                TEXT PRIMARY KEY,
+                tenant_id         TEXT NOT NULL,
+                url               TEXT,
+                host              TEXT,
+                name              TEXT DEFAULT '',
+                intel_json        TEXT DEFAULT '',
+                distributor_count INTEGER DEFAULT 0,
+                snapshot_hash     TEXT DEFAULT '',
+                frequency_days    INTEGER DEFAULT 7,
+                last_checked      TEXT,
+                next_check_at     TEXT,
+                change_note       TEXT DEFAULT '',
+                has_change        INTEGER DEFAULT 0,
+                status            TEXT DEFAULT 'active',
+                created_at        TEXT,
+                updated_at        TEXT
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_competitor_host
+                ON competitors(tenant_id, host);
         """)
         try:
             conn.execute("ALTER TABLE tenants ADD COLUMN email_verified INTEGER DEFAULT 0")
@@ -545,6 +567,153 @@ def get_open_stats(tenant_id: str) -> dict:
         "open_rate": round(opened / sent * 100, 1) if sent else 0.0,
         "click_rate": round(clicked / sent * 100, 1) if sent else 0.0,
     }
+
+
+# ── 渠道雷达：竞品监控 ─────────────────────────────────────
+
+import json as _json
+
+
+def _next_check(freq_days: int) -> str:
+    return (datetime.now(timezone.utc) +
+            timedelta(days=max(1, int(freq_days or 7)))
+            ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def upsert_competitor(tenant_id: str, url: str, host: str, name: str = "",
+                      intel: dict = None, distributor_count: int = 0,
+                      snapshot_hash: str = "", frequency_days: int = 7,
+                      monitor: bool = True) -> str:
+    """
+    新增或更新一个竞品记录（按 tenant_id+host 唯一）。
+    monitor=True 表示纳入定期监控（active），否则只存一次结果（status=once）。
+    返回 competitor id。
+    """
+    intel_str = _json.dumps(intel or {}, ensure_ascii=False)
+    status = "active" if monitor else "once"
+    now = _now()
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id, intel_json, distributor_count, snapshot_hash "
+            "FROM competitors WHERE tenant_id=? AND host=?",
+            (tenant_id, host)
+        ).fetchone()
+        if existing:
+            # 比对变化：经销商数变了 或 快照 hash 变了 → 标记 has_change
+            changed = (existing["snapshot_hash"] and snapshot_hash and
+                       existing["snapshot_hash"] != snapshot_hash) or \
+                      (existing["distributor_count"] != distributor_count and
+                       existing["snapshot_hash"])
+            note = ""
+            if changed:
+                old_n = existing["distributor_count"] or 0
+                if distributor_count != old_n:
+                    note = f"经销商数量 {old_n} → {distributor_count}"
+                else:
+                    note = "官网内容有更新"
+            conn.execute("""
+                UPDATE competitors SET
+                    url=?, name=COALESCE(NULLIF(?,''), name),
+                    intel_json=?, distributor_count=?, snapshot_hash=?,
+                    frequency_days=?, last_checked=?, next_check_at=?,
+                    change_note=CASE WHEN ? THEN ? ELSE change_note END,
+                    has_change=CASE WHEN ? THEN 1 ELSE has_change END,
+                    status=CASE WHEN ?='once' THEN status ELSE ? END,
+                    updated_at=?
+                WHERE id=?
+            """, (url, name, intel_str, distributor_count, snapshot_hash,
+                  frequency_days, now, _next_check(frequency_days),
+                  1 if changed else 0, note,
+                  1 if changed else 0,
+                  status, status,
+                  now, existing["id"]))
+            return existing["id"]
+        cid = "cmp_" + uuid.uuid4().hex[:12]
+        conn.execute("""
+            INSERT INTO competitors
+                (id, tenant_id, url, host, name, intel_json, distributor_count,
+                 snapshot_hash, frequency_days, last_checked, next_check_at,
+                 status, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (cid, tenant_id, url, host, name, intel_str, distributor_count,
+              snapshot_hash, frequency_days, now, _next_check(frequency_days),
+              status, now, now))
+        return cid
+
+
+def list_competitors(tenant_id: str) -> list:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM competitors WHERE tenant_id=? "
+            "ORDER BY has_change DESC, updated_at DESC", (tenant_id,)
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["intel"] = _json.loads(d.get("intel_json") or "{}")
+        except Exception:
+            d["intel"] = {}
+        out.append(d)
+    return out
+
+
+def get_competitor(tenant_id: str, cid: str) -> dict:
+    with get_conn() as conn:
+        r = conn.execute(
+            "SELECT * FROM competitors WHERE tenant_id=? AND id=?",
+            (tenant_id, cid)).fetchone()
+    return dict(r) if r else None
+
+
+def delete_competitor(tenant_id: str, cid: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM competitors WHERE tenant_id=? AND id=?",
+                     (tenant_id, cid))
+
+
+def set_competitor_monitor(tenant_id: str, cid: str, monitor: bool,
+                           frequency_days: int = None) -> None:
+    """开/关某个竞品的定期监控；可同时改频率。"""
+    with get_conn() as conn:
+        if frequency_days:
+            conn.execute(
+                "UPDATE competitors SET status=?, frequency_days=?, "
+                "next_check_at=?, updated_at=? WHERE tenant_id=? AND id=?",
+                ("active" if monitor else "paused", frequency_days,
+                 _next_check(frequency_days), _now(), tenant_id, cid))
+        else:
+            conn.execute(
+                "UPDATE competitors SET status=?, updated_at=? "
+                "WHERE tenant_id=? AND id=?",
+                ("active" if monitor else "paused", _now(), tenant_id, cid))
+
+
+def clear_competitor_change(tenant_id: str, cid: str) -> None:
+    """用户看过变化提示后清掉红点。"""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE competitors SET has_change=0, updated_at=? "
+            "WHERE tenant_id=? AND id=?", (_now(), tenant_id, cid))
+
+
+def get_due_competitors(limit: int = 50) -> list:
+    """到点该重扫的监控竞品（给后台调度线程用）。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM competitors WHERE status='active' "
+            "AND (next_check_at IS NULL OR next_check_at <= ?) "
+            "ORDER BY next_check_at LIMIT ?",
+            (_now(), limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_competitor_changes(tenant_id: str) -> int:
+    with get_conn() as conn:
+        r = conn.execute(
+            "SELECT COUNT(*) n FROM competitors "
+            "WHERE tenant_id=? AND has_change=1", (tenant_id,)).fetchone()
+    return r["n"] or 0
 
 
 # ── 清理过期 token（定期调用）─────────────────────────────

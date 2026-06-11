@@ -54,37 +54,101 @@ class AIExtractor:
     def __init__(self):
         self.deepseek_key = ""
         self.timeout      = 25
+        self.proxy        = ""     # 可选代理地址(http://user:pass@host:port)；空=直连本机IP
+        self.max_retries  = 2      # 遇 403/429/503 时的额外重试次数（带退避）
         self._cache: dict = {}
 
     # ── 抓网页 ──────────────────────────────────────────────────────────────
 
+    def _proxies(self):
+        """有填代理就用，没填返回 None（走本机 IP）。"""
+        if self.proxy:
+            return {"http": self.proxy, "https": self.proxy}
+        return None
+
     def fetch_html(self, url: str) -> str:
-        """抓取网页 HTML。优先 curl_cffi 伪装 Chrome，失败回退 requests。"""
+        """
+        抓取网页 HTML。优先 curl_cffi 伪装 Chrome，失败回退 requests。
+        特性：① 中文站编码自适应(GBK/GB2312/UTF-8)；② 遇反爬限流(403/429/503)
+        自动退避重试；③ 可选代理 IP（self.proxy 留空则走本机）。
+        """
         if not url:
             return ""
         if not url.startswith(("http://", "https://")):
             url = "http://" + url
+        proxies = self._proxies()
 
         # curl_cffi：模拟真实 Chrome TLS 指纹，能过掉一部分 Cloudflare/WAF
         if _HAS_CF:
-            try:
-                r = cf.get(url, impersonate="chrome120", timeout=self.timeout,
-                           allow_redirects=True)
-                if r.status_code == 200 and r.text:
-                    return r.text
-            except Exception as e:
-                print(f"[AIExtractor] curl_cffi 抓取失败 {url}: {e}")
+            for attempt in range(self.max_retries + 1):
+                try:
+                    kw = dict(impersonate="chrome120", timeout=self.timeout,
+                              allow_redirects=True)
+                    if proxies:
+                        kw["proxies"] = proxies
+                    r = cf.get(url, **kw)
+                    if r.status_code == 200 and r.content:
+                        return self._decode(r)
+                    # 被限流/拦截：退避后再试，避免猛刷激怒对方网站
+                    if r.status_code in (403, 429, 503) and attempt < self.max_retries:
+                        time.sleep(random.uniform(2.0, 4.0) * (attempt + 1))
+                        continue
+                    break
+                except Exception as e:
+                    print(f"[AIExtractor] curl_cffi 抓取失败 {url}: {e}")
+                    if attempt < self.max_retries:
+                        time.sleep(random.uniform(1.5, 3.0))
+                        continue
+                    break
 
         # 回退普通 requests
         try:
-            r = requests.get(url, headers={"User-Agent": _UA,
-                                           "Accept-Language": "en-US,en;q=0.9"},
-                             timeout=self.timeout, allow_redirects=True)
+            kw = dict(headers={"User-Agent": _UA,
+                               "Accept-Language": "en-US,en;q=0.9"},
+                      timeout=self.timeout, allow_redirects=True)
+            if proxies:
+                kw["proxies"] = proxies
+            r = requests.get(url, **kw)
             if r.status_code == 200:
-                return r.text
+                return self._decode(r)
         except Exception as e:
             print(f"[AIExtractor] requests 抓取失败 {url}: {e}")
         return ""
+
+    @staticmethod
+    def _decode(resp) -> str:
+        """
+        字节流 → 文本，编码自适应。中文站常用 GBK/GB2312（统一按兼容超集
+        gb18030 解码），国外站多为 UTF-8。优先用页面 <meta charset> 声明。
+        """
+        raw = getattr(resp, "content", None)
+        if raw is None:
+            return getattr(resp, "text", "") or ""
+        if not raw:
+            return ""
+        # 嗅探 <meta charset>（前 2KB 足够）
+        enc = ""
+        m = re.search(rb'charset=["\']?\s*([a-z0-9_\-]+)', raw[:2048].lower())
+        if m:
+            enc = m.group(1).decode("ascii", "ignore").lower()
+        # 中文编码统一用 gb18030（兼容 gbk/gb2312）
+        if enc in ("gb2312", "gbk", "gb-2312", "gb18030"):
+            try:
+                return raw.decode("gb18030")
+            except Exception:
+                pass
+        elif enc and enc not in ("utf-8", "utf8"):
+            try:
+                return raw.decode(enc)
+            except Exception:
+                pass
+        # 默认 utf-8 → 退 gb18030 → 最后用替换兜底（不抛错）
+        for e in ("utf-8", "gb18030"):
+            try:
+                return raw.decode(e)
+            except Exception:
+                continue
+        return raw.decode("utf-8", "replace")
 
     # ── HTML → 纯文本 ───────────────────────────────────────────────────────
 
@@ -151,7 +215,7 @@ class AIExtractor:
         else:
             html = self.fetch_html(url)
             self._cache[url] = html
-            time.sleep(random.uniform(0.3, 0.8))
+            time.sleep(random.uniform(0.15, 0.4))
         if not html:
             return []
         text = self.html_to_text(html)

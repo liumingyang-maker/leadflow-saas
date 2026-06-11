@@ -159,6 +159,9 @@ tr:hover td{background:#fafbfd}
     <a href="/inbound" class="{{ 'active' if 'inbound' in request.endpoint }}">
       <i class="nav-icon">🔗</i> 独立站询盘 <span class="nav-new">NEW</span>
     </a>
+    <a href="/radar" class="{{ 'active' if 'radar' in request.endpoint }}">
+      <i class="nav-icon">🛰️</i> 渠道雷达 <span class="nav-new">NEW</span>
+    </a>
 
     <div class="nav-group">客户管理</div>
     <a href="/leads" class="{{ 'active' if request.endpoint in ('leads_list','dashboard','lead_detail') }}">

@@ -1,0 +1,218 @@
+{% extends "app/base.html" %}
+{% block title %}渠道雷达{% endblock %}
+{% block page_title %}🛰️ 渠道雷达{% endblock %}
+{% block content %}
+<style>
+.rd-intro{background:linear-gradient(135deg,#eff6ff,#f0f9ff);border:1px solid #bfdbfe;
+          border-radius:12px;padding:18px 20px;margin-bottom:20px}
+.rd-intro h3{font-size:15px;font-weight:700;color:#1e3a8a;margin:0 0 8px}
+.rd-intro p{font-size:13px;color:#475569;line-height:1.7;margin:0}
+.rd-intro .flow{margin-top:10px;font-size:12.5px;color:#1e40af;font-weight:500}
+.rd-box{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:22px}
+.rd-box h3{font-size:14px;font-weight:700;color:#1e293b;margin:0 0 4px}
+.rd-box .hint{font-size:12px;color:#94a3b8;margin:0 0 14px}
+.rd-ta{width:100%;min-height:88px;border:1px solid #cbd5e1;border-radius:8px;padding:10px 12px;
+       font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box}
+.rd-ta:focus{outline:none;border-color:#2563eb}
+.rd-opt{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#374151}
+.rd-opt input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
+.rd-opt select{border:1px solid #cbd5e1;border-radius:6px;padding:4px 8px;font-size:13px}
+.rd-run{margin-top:16px;display:flex;align-items:center;gap:12px}
+.rd-status{font-size:13px;color:#6b7280}
+.section-title{font-size:15px;font-weight:700;color:#1e293b;margin:24px 0 14px;
+               display:flex;align-items:center;gap:8px}
+.section-title::after{content:'';flex:1;height:1px;background:#e2e8f0}
+.cmp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+.cmp-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;position:relative}
+.cmp-card.changed{border-color:#f59e0b;box-shadow:0 0 0 1px #fde68a}
+.cmp-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+.cmp-host{font-size:14px;font-weight:700;color:#0f172a;word-break:break-all}
+.cmp-host a{color:#2563eb;text-decoration:none}
+.cmp-host a:hover{text-decoration:underline}
+.cmp-dist{margin-left:auto;flex-shrink:0;text-align:right}
+.cmp-dist b{font-size:22px;color:#2563eb;line-height:1}
+.cmp-dist span{display:block;font-size:11px;color:#94a3b8}
+.cmp-intel{font-size:12.5px;color:#475569;line-height:1.7}
+.cmp-intel .row{display:flex;gap:6px;margin-bottom:2px}
+.cmp-intel .k{color:#94a3b8;flex-shrink:0;min-width:52px}
+.cmp-intel .v{color:#334155}
+.chg-badge{display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;
+           border-radius:10px;padding:2px 9px;font-size:11px;font-weight:600;margin-bottom:8px}
+.cmp-foot{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;
+          border-top:1px solid #f1f5f9;font-size:12px}
+.mon-toggle{display:flex;align-items:center;gap:6px;color:#475569}
+.mon-toggle input{width:15px;height:15px;accent-color:#16a34a}
+.cmp-foot select{border:1px solid #e2e8f0;border-radius:5px;padding:2px 5px;font-size:12px}
+.cmp-foot .sp{flex:1}
+.lnk{color:#94a3b8;cursor:pointer;text-decoration:none}
+.lnk:hover{color:#dc2626}
+.lnk.blue:hover{color:#2563eb}
+.empty{text-align:center;color:#94a3b8;font-size:13px;padding:30px;
+       background:#fff;border:1px dashed #e2e8f0;border-radius:12px}
+.badge-mini{font-size:11px;padding:1px 7px;border-radius:8px;font-weight:500}
+.bg-green{background:#dcfce7;color:#166534}.bg-gray{background:#f3f4f6;color:#6b7280}
+</style>
+
+<div class="content">
+
+<div class="rd-intro">
+  <h3>🛰️ 渠道雷达能帮你做什么？</h3>
+  <p>填入同行（竞品）的官网，系统自动找到他们的「经销商 / Distributors / Where to Buy」页面，
+     用 AI 提取出经销商名单（公司 / 国家 / 电话 / 邮箱 / 网站）<b>直接入库成你的客户线索</b>——
+     这些正在卖同类产品的海外经销商，恰恰是你最想拿下的客户。同时为每个竞品生成一张「情报卡」，
+     并可纳入<b>定期监控</b>，对手上新经销商/新产品时自动提醒你。</p>
+  <div class="flow">填竞品网址 → 找经销商页 → AI 提名单 → 过滤假数据 → 入库线索 + 情报卡 → 定期监控变化</div>
+</div>
+
+{% if not has_keys %}
+<div class="rd-box" style="border-color:#fca5a5;background:#fef2f2">
+  <h3 style="color:#991b1b">⚠️ 需要先配置 DeepSeek API Key</h3>
+  <p class="hint" style="margin-bottom:0">渠道雷达靠 AI 读网页提取名单，请先到
+     <a href="/settings" style="color:#2563eb">系统设置</a> 填写 DeepSeek API Key。</p>
+</div>
+{% endif %}
+
+<!-- 输入区 -->
+<div class="rd-box">
+  <h3>① 填竞品网址（每行一个，可填多个）</h3>
+  <p class="hint">例：https://www.competitor.com —— 填同行/竞品的官网首页即可，系统自动找经销商页</p>
+  <textarea class="rd-ta" id="rdUrls" placeholder="https://competitor-a.com&#10;https://competitor-b.com"></textarea>
+
+  <div class="rd-opt">
+    <input type="checkbox" id="rdAuto">
+    <label for="rdAuto">② 让系统按我的产品关键词自动搜竞品（需配 Serper Key，会额外搜 8 家同行）</label>
+  </div>
+
+  <div class="rd-opt">
+    <input type="checkbox" id="rdMonitor" checked>
+    <label for="rdMonitor">把这些竞品纳入定期监控，每</label>
+    <select id="rdFreq">
+      <option value="7" selected>每周</option>
+      <option value="1">每天</option>
+      <option value="30">每月</option>
+    </select>
+    <label for="rdFreq">自动重扫一次，有变化时提醒我</label>
+  </div>
+
+  <div class="rd-run">
+    <button class="btn btn-primary" id="rdRunBtn" onclick="runRadar()" style="padding:10px 24px"
+            {% if not has_keys %}disabled{% endif %}>▶ 启动雷达扫描</button>
+    <div class="rd-status" id="rdStatus"></div>
+  </div>
+  <p class="hint" style="margin:12px 0 0">
+    💡 扫描在后台进行（每个竞品要抓页面 + AI 解析，约需 10~40 秒），完成后下方监控列表会更新。
+    经销商已入库到 <a href="/leads" style="color:#2563eb">客户列表</a>（来源标记「渠道雷达」），
+    需要邮箱时去客户列表点「批量找邮箱」。
+  </p>
+</div>
+
+<!-- 监控列表 -->
+<div class="section-title">📡 监控中的竞品（{{ competitors|length }}）</div>
+
+{% if competitors %}
+<div class="cmp-grid">
+  {% for c in competitors %}
+  <div class="cmp-card {% if c.has_change %}changed{% endif %}" id="cmp-{{ c.id }}">
+    {% if c.has_change %}
+    <div class="chg-badge">🔔 有变化：{{ c.change_note or '官网内容有更新' }}
+      <a class="lnk blue" style="margin-left:6px" onclick="seenCmp('{{ c.id }}')">知道了</a>
+    </div>
+    {% endif %}
+    <div class="cmp-head">
+      <div>
+        <div class="cmp-host"><a href="{{ c.url }}" target="_blank">{{ c.host }}</a></div>
+        <span class="badge-mini {% if c.status=='active' %}bg-green{% else %}bg-gray{% endif %}">
+          {% if c.status=='active' %}● 监控中{% elif c.status=='paused' %}⏸ 已暂停{% else %}单次{% endif %}
+        </span>
+      </div>
+      <div class="cmp-dist">
+        <b>{{ c.distributor_count }}</b>
+        <span>经销商</span>
+      </div>
+    </div>
+
+    <div class="cmp-intel">
+      {% if c.intel.main_products %}<div class="row"><span class="k">主营</span><span class="v">{{ c.intel.main_products }}</span></div>{% endif %}
+      {% if c.intel.target_markets %}<div class="row"><span class="k">市场</span><span class="v">{{ c.intel.target_markets }}</span></div>{% endif %}
+      {% if c.intel.company_scale %}<div class="row"><span class="k">规模</span><span class="v">{{ c.intel.company_scale }}</span></div>{% endif %}
+      {% if c.intel.price_signal %}<div class="row"><span class="k">定位</span><span class="v">{{ c.intel.price_signal }}</span></div>{% endif %}
+      {% if c.intel.highlights %}<div class="row"><span class="k">动态</span><span class="v">{{ c.intel.highlights }}</span></div>{% endif %}
+      {% if not c.intel.main_products and not c.intel.target_markets %}
+        <span style="color:#cbd5e1">（暂无情报，重扫后生成）</span>
+      {% endif %}
+    </div>
+
+    <div class="cmp-foot">
+      <label class="mon-toggle">
+        <input type="checkbox" {% if c.status=='active' %}checked{% endif %}
+               onchange="toggleMon('{{ c.id }}', this.checked)"> 定期监控
+      </label>
+      <select onchange="changeFreq('{{ c.id }}', this.value)">
+        <option value="7"  {% if c.frequency_days==7 %}selected{% endif %}>每周</option>
+        <option value="1"  {% if c.frequency_days==1 %}selected{% endif %}>每天</option>
+        <option value="30" {% if c.frequency_days==30 %}selected{% endif %}>每月</option>
+      </select>
+      <span class="sp"></span>
+      {% if c.last_checked %}<span style="color:#cbd5e1">上次：{{ c.last_checked[5:16] }}</span>{% endif %}
+      <a class="lnk" onclick="delCmp('{{ c.id }}')">删除</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">还没有监控的竞品。在上方填入竞品网址、点「启动雷达扫描」即可开始。</div>
+{% endif %}
+
+</div><!-- end .content -->
+
+<script>
+function runRadar(){
+  var urls = document.getElementById('rdUrls').value.trim();
+  var auto = document.getElementById('rdAuto').checked;
+  if(!urls && !auto){ alert('请填竞品网址，或勾选「让系统自动搜竞品」'); return; }
+  var btn = document.getElementById('rdRunBtn');
+  btn.disabled = true;
+  document.getElementById('rdStatus').textContent = '⏳ 雷达扫描中，请勿关闭页面…';
+  fetch('/radar/run',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      urls: urls,
+      auto_search: auto,
+      monitor: document.getElementById('rdMonitor').checked,
+      frequency_days: parseInt(document.getElementById('rdFreq').value,10)
+    })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){ pollRadar(d.task_id); }
+    else { document.getElementById('rdStatus').textContent = '❌ ' + (d.error||'启动失败'); btn.disabled=false; }
+  });
+}
+function pollRadar(tid){
+  var timer = setInterval(function(){
+    fetch('/task/'+tid).then(function(r){return r.json();}).then(function(d){
+      if(d.status==='done'){
+        clearInterval(timer);
+        document.getElementById('rdStatus').textContent = '✅ 完成！' + (d.log||[]).join(' · ');
+        setTimeout(function(){ location.reload(); }, 1500);
+      } else if(d.status==='error'){
+        clearInterval(timer);
+        document.getElementById('rdStatus').textContent = '❌ 出错：' + (d.log||[]).join(' ');
+        document.getElementById('rdRunBtn').disabled = false;
+      }
+    });
+  }, 2500);
+}
+function postJ(url, body, cb){
+  fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body||{})}).then(function(r){return r.json();}).then(cb||function(){});
+}
+function toggleMon(id, on){ postJ('/radar/'+id+'/monitor', {monitor:on}); }
+function changeFreq(id, v){ postJ('/radar/'+id+'/monitor', {monitor:true, frequency_days:parseInt(v,10)}); }
+function seenCmp(id){ postJ('/radar/'+id+'/seen', {}, function(){ location.reload(); }); }
+function delCmp(id){
+  if(!confirm('确定删除这个竞品监控？（已入库的经销商线索不会被删）')) return;
+  postJ('/radar/'+id+'/delete', {}, function(){
+    var el = document.getElementById('cmp-'+id); if(el) el.remove();
+  });
+}
+</script>
+{% endblock %}
