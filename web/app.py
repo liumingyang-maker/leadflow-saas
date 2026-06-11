@@ -52,6 +52,9 @@ else:
             pass
         app.secret_key = _sk
 
+# 持久登录："60天免密登录"勾选时 session.permanent=True，按此存活期保持登录
+app.permanent_session_lifetime = timedelta(days=60)
+
 # CORS：允许本机 + 生产域名（SITE_URL）。独立站询盘的公开接口另有 _cors 放行 *
 _cors_origins = ["http://127.0.0.1:5001", "http://localhost:5001"]
 _site_origin = os.environ.get("SITE_URL", "").rstrip("/")
@@ -214,6 +217,7 @@ def index():
 @rate_limit(max_hits=10, window=60, scope="login")
 def login():
     error = ""
+    email = ""
     if request.method == "POST":
         email    = request.form.get("email", "").strip().lower()[:120]
         password = request.form.get("password", "")[:128]
@@ -228,7 +232,8 @@ def login():
                 elif admin_db.is_trial_expired(t):
                     error = "试用期已过，请联系客服开通正式版"
                 else:
-                    session.permanent = True
+                    # 勾选"60天免密登录"才持久化(60天)，否则浏览器关闭即失效
+                    session.permanent = request.form.get("remember_login") == "on"
                     session["tenant_id"]    = t["id"]
                     session["tenant_email"] = t["email"]
                     session["company_name"] = t.get("company_name", "")
@@ -239,7 +244,7 @@ def login():
                     return redirect(url_for("workbench"))
             else:
                 error = result["error"]
-    return render_template("auth/login.html", error=error)
+    return render_template("auth/login.html", error=error, email=email)
 
 
 @app.route("/register", methods=["GET", "POST"])

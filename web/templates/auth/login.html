@@ -44,17 +44,48 @@ input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="POST">
     <label>邮箱</label>
-    <input type="email" name="email" placeholder="your@email.com" required autofocus>
+    <input type="email" id="loginEmail" name="email" value="{{ email or '' }}"
+           placeholder="your@email.com" required autofocus>
     <label>密码</label>
     <input type="password" name="password" placeholder="请输入密码" required>
-    <div style="text-align:right;margin-top:-8px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:-8px;margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;font-weight:400;margin:0;cursor:pointer">
+        <input type="checkbox" id="rememberEmail" style="width:auto;margin:0"> 记住账号
+      </label>
       <a href="/forgot-password" style="font-size:12px;color:#6b7280">忘记密码？</a>
     </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;font-weight:400;margin-bottom:16px;cursor:pointer">
+      <input type="checkbox" name="remember_login" id="rememberLogin" style="width:auto;margin:0" checked>
+      60 天内免密登录（公用电脑请勿勾选）
+    </label>
     <button class="btn" type="submit">登录</button>
   </form>
   <div class="footer">
     还没有账号？<a href="/register">免费试用 14 天</a>
   </div>
 </div>
+<script>
+(function(){
+  var emailInput = document.getElementById('loginEmail');
+  var remEmail   = document.getElementById('rememberEmail');
+  var KEY = 'lf_remember_email';
+  // 加载时：之前记住过账号就自动填邮箱并勾上"记住账号"
+  try {
+    var saved = localStorage.getItem(KEY);
+    if (saved) {
+      if (!emailInput.value) emailInput.value = saved;
+      remEmail.checked = true;
+    }
+  } catch(e){}
+  // 提交时：勾了就存邮箱，没勾就清掉
+  var form = emailInput.closest('form');
+  if (form) form.addEventListener('submit', function(){
+    try {
+      if (remEmail.checked) localStorage.setItem(KEY, emailInput.value.trim());
+      else localStorage.removeItem(KEY);
+    } catch(e){}
+  });
+})();
+</script>
 </body>
 </html>
