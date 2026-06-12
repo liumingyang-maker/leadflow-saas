@@ -266,6 +266,89 @@ def _norm_country(s):
         c = c[4:].strip()
     return _EN_ALIASES.get(c, c)
 
+
+# 规范英文国家名（小写）→ ISO 3166-1 alpha-2 国家码（Serper 的 gl 参数用）。
+# 覆盖 _CN_EN 全部国家 + 几个常见发达国家。gl 让 Google 切到该国本地索引，
+# 这样「重点扫描尼日利亚」就真的搜 Google 尼日利亚，而不是返回全网最热门的市场。
+_EN_GL = {
+    # 非洲
+    "nigeria": "ng", "ethiopia": "et", "egypt": "eg", "dr congo": "cd",
+    "tanzania": "tz", "kenya": "ke", "south africa": "za", "uganda": "ug",
+    "algeria": "dz", "sudan": "sd", "morocco": "ma", "angola": "ao",
+    "mozambique": "mz", "ghana": "gh", "ivory coast": "ci", "cameroon": "cm",
+    "niger": "ne", "burkina faso": "bf", "mali": "ml", "malawi": "mw",
+    "zambia": "zm", "senegal": "sn", "zimbabwe": "zw", "chad": "td",
+    "guinea": "gn", "rwanda": "rw", "benin": "bj", "burundi": "bi",
+    "tunisia": "tn", "libya": "ly", "togo": "tg", "sierra leone": "sl",
+    "eritrea": "er", "central african republic": "cf", "mauritania": "mr",
+    "botswana": "bw", "namibia": "na", "gambia": "gm", "gabon": "ga",
+    # 东南亚
+    "indonesia": "id", "philippines": "ph", "vietnam": "vn", "thailand": "th",
+    "myanmar": "mm", "malaysia": "my", "cambodia": "kh", "laos": "la",
+    "singapore": "sg", "brunei": "bn", "timor-leste": "tl",
+    # 南亚
+    "india": "in", "pakistan": "pk", "bangladesh": "bd", "nepal": "np",
+    "sri lanka": "lk", "afghanistan": "af", "maldives": "mv",
+    # 中东
+    "turkey": "tr", "saudi arabia": "sa", "united arab emirates": "ae",
+    "iraq": "iq", "iran": "ir", "yemen": "ye", "syria": "sy", "jordan": "jo",
+    "kuwait": "kw", "oman": "om", "qatar": "qa", "bahrain": "bh",
+    "lebanon": "lb", "israel": "il", "palestine": "ps",
+    # 北美
+    "united states": "us", "canada": "ca", "mexico": "mx",
+    # 拉美
+    "brazil": "br", "colombia": "co", "argentina": "ar", "peru": "pe",
+    "venezuela": "ve", "chile": "cl", "ecuador": "ec", "bolivia": "bo",
+    "paraguay": "py", "uruguay": "uy", "guatemala": "gt", "honduras": "hn",
+    "el salvador": "sv", "nicaragua": "ni", "costa rica": "cr", "panama": "pa",
+    "dominican republic": "do", "cuba": "cu", "haiti": "ht", "jamaica": "jm",
+    "trinidad and tobago": "tt",
+    # 西欧
+    "germany": "de", "united kingdom": "gb", "france": "fr", "italy": "it",
+    "spain": "es", "netherlands": "nl", "belgium": "be", "sweden": "se",
+    "norway": "no", "denmark": "dk", "finland": "fi", "switzerland": "ch",
+    "austria": "at", "portugal": "pt", "greece": "gr", "ireland": "ie",
+    "czech republic": "cz", "hungary": "hu", "romania": "ro", "poland": "pl",
+    "bulgaria": "bg", "croatia": "hr", "slovakia": "sk", "slovenia": "si",
+    "serbia": "rs", "bosnia and herzegovina": "ba", "albania": "al",
+    "north macedonia": "mk",
+    # 东欧/中亚
+    "russia": "ru", "ukraine": "ua", "kazakhstan": "kz", "belarus": "by",
+    "uzbekistan": "uz", "azerbaijan": "az", "georgia": "ge", "armenia": "am",
+    "kyrgyzstan": "kg", "tajikistan": "tj", "turkmenistan": "tm", "moldova": "md",
+    # 大洋洲
+    "australia": "au", "new zealand": "nz", "papua new guinea": "pg", "fiji": "fj",
+    # 其它常见发达国家
+    "china": "cn", "japan": "jp", "south korea": "kr", "taiwan": "tw",
+    "hong kong": "hk", "macau": "mo",
+}
+# 规范英文名（小写）→ 语言：从 _COUNTRY_LANG 推出，用于 hl 参数和本地化经销商词
+_EN_LANG_LC = {en.lower(): lang for (en, lang) in _COUNTRY_LANG.values()}
+
+
+def resolve_focus_country(name):
+    """重点扫描国家：客户填的中/英国家名 → {cn, en, gl, hl}；认不出返回 None。
+
+    用于：① 雷达页下拉/手填的「重点扫描国家」服务端校验（认不出就报错让客户改）；
+          ② run() 里据此给所有 Serper 查询加 gl/hl 地区定向。
+    """
+    if not name:
+        return None
+    raw = str(name).strip()
+    low = raw.lower()
+    if raw in _CN_EN:                       # 中文名（尼日利亚）
+        en = _CN_EN[raw]
+    elif low in _EN_ALIASES:                # 英文变体（USA/UAE/Cote d'Ivoire…）
+        en = _EN_ALIASES[low]
+    elif low in _EN_GL:                      # 已是规范英文名（nigeria）
+        en = low
+    else:
+        return None
+    gl = _EN_GL.get(en)
+    if not gl:
+        return None
+    return {"cn": raw, "en": en, "gl": gl, "hl": _EN_LANG_LC.get(en, "en")}
+
 # 太泛、当不了搜索钥匙的「品牌名」（城市/通用词），命中则降级用型号/产品词
 _GENERIC_BRANDS = {
     "chongqing", "shanghai", "guangzhou", "beijing", "shandong", "zhejiang",
@@ -292,11 +375,17 @@ class CompetitorRadar:
 
     def __init__(self):
         self.deepseek_key     = ""
-        self.serper_key       = ""
+        self.serper_key       = ""        # 单 key（向后兼容）
+        self.serper_keys      = []        # 多 key 池：一个失效/额度耗尽自动切下一个
+        self._serper_idx      = 0         # 当前用第几个 key（轮换游标）
         self.hunter_key       = ""
         self.product_name     = ""
         self.search_keywords  = []
         self.target_countries = []
+        self.focus_country    = ""        # 本次重点扫描的国家（客户选），驱动 gl 地区定向
+        self._gl              = ""        # Serper gl（国家码），run() 里据 focus_country 解析
+        self._hl              = ""        # Serper hl（语言）
+        self._focus_en        = ""        # 重点国家规范英文名（本地化查询用）
         self.my_category      = ""        # 本租户产品类目，给质量闸判断「同类」
         self.product_i18n     = {}        # 本租户产品多语言关键词，补搜本地市场竞品
         self._target_en       = set()     # 目标市场国家(英文小写)，国家闸用，run() 里按 target_countries 构建
@@ -326,11 +415,25 @@ class CompetitorRadar:
         self._ex.proxy        = self.proxy
         self.serper_calls     = 0
         self.serper_fails     = 0
-        logger.info(f"[Radar] 开扫：sources={self.sources} serper_key={'有' if self.serper_key else '无'} "
+        self._serper_idx      = 0
+        nkeys = len(self.serper_keys or ([self.serper_key] if self.serper_key else []))
+        logger.info(f"[Radar] 开扫：sources={self.sources} serper_keys={nkeys} "
                     f"deepseek_key={'有' if self.deepseek_key else '无'} "
                     f"目标国数={len(self.target_countries or [])} 类目={self.my_category or '(空)'}")
         # 国家闸：按租户在「目标市场」选的国家构建英文目标集
         self._target_en = {_CN_EN[c] for c in (self.target_countries or []) if c in _CN_EN}
+        # 重点扫描国家：给所有 Serper 查询加 gl/hl 地区定向（治"结果全是某个热门市场"）
+        self._gl = self._hl = self._focus_en = ""
+        if self.focus_country:
+            fc = resolve_focus_country(self.focus_country)
+            if fc:
+                self._gl, self._hl, self._focus_en = fc["gl"], fc["hl"], fc["en"]
+                # 确保重点国家的线索能过国家闸（即便它不在已选目标市场里）
+                if self._target_en:
+                    self._target_en.add(_norm_country(fc["en"]))
+                logger.info(f"[Radar] 重点扫描国家={fc['en']} gl={fc['gl']} hl={fc['hl']}")
+            else:
+                logger.warning(f"[Radar] 重点国家「{self.focus_country}」未识别，按目标市场广搜")
         sources = [s for s in (self.sources or []) if s in _VIA] or list(_VIA)
 
         sites, seen = [], set()
@@ -402,34 +505,61 @@ class CompetitorRadar:
 
     # ── Serper 封装（带额度计数）─────────────────────────────────────────────
 
-    def _serper(self, q: str, num: int = 10) -> list:
-        if not self.serper_key:
+    def _serper(self, q: str, num: int = 10, gl=None, hl=None) -> list:
+        """跑一次 Serper 搜索。带 gl/hl 地区定向（重点国家时）+ 多 key 自动容错：
+        某个 key 报 401/402/403/429（无效/欠费/限流）就切换下一个 key 重试。
+        serper_calls 只统计成功(200)的调用 = 实际消耗的额度。"""
+        keys = self.serper_keys or ([self.serper_key] if self.serper_key else [])
+        if not keys:
             logger.warning("[Radar] 未配置 Serper Key，反向/社媒/海关源无法搜索（只能跑官网扫描）")
             return []
-        self.serper_calls += 1
-        try:
-            resp = requests.post(
-                "https://google.serper.dev/search",
-                headers={"X-API-KEY": self.serper_key,
-                         "Content-Type": "application/json"},
-                json={"q": q, "num": num}, timeout=20)
-            if resp.status_code != 200:
+        payload = {"q": q, "num": num}
+        g = gl if gl is not None else self._gl
+        h = hl if hl is not None else self._hl
+        if g:
+            payload["gl"] = g
+        if h:
+            payload["hl"] = h
+        last = ""
+        for _ in range(len(keys)):
+            idx = self._serper_idx % len(keys)
+            key = keys[idx]
+            try:
+                resp = requests.post(
+                    "https://google.serper.dev/search",
+                    headers={"X-API-KEY": key, "Content-Type": "application/json"},
+                    json=payload, timeout=20)
+                if resp.status_code == 200:
+                    self.serper_calls += 1
+                    results = resp.json().get("organic", []) or []
+                    geo = f" gl={g}" if g else ""
+                    logger.info(f"[Radar] Serper '{q[:36]}'{geo} → {len(results)} 条结果")
+                    return results
+                if resp.status_code in (401, 402, 403, 429):
+                    self.serper_fails += 1
+                    last = f"HTTP {resp.status_code}"
+                    logger.warning(f"[Radar] Serper key#{idx + 1}/{len(keys)} {last}"
+                                   f"（无效/欠费/限流），切换下一个 key")
+                    self._serper_idx += 1
+                    continue
+                # 其它错误：本次放弃，不切 key
                 self.serper_fails += 1
-                logger.warning(f"[Radar] Serper HTTP {resp.status_code} '{q[:40]}' "
-                               f"响应:{resp.text[:120]}（key 无效/额度用尽时常见 401/403）")
+                logger.warning(f"[Radar] Serper HTTP {resp.status_code} '{q[:30]}' "
+                               f"响应:{resp.text[:100]}")
                 return []
-            results = resp.json().get("organic", []) or []
-            logger.info(f"[Radar] Serper '{q[:40]}' → {len(results)} 条结果")
-            return results
-        except Exception as e:
-            self.serper_fails += 1
-            logger.warning(f"[Radar] Serper 搜索异常 '{q[:40]}': {e}")
-            return []
+            except Exception as e:
+                self.serper_fails += 1
+                last = str(e)
+                logger.warning(f"[Radar] Serper 异常 '{q[:30]}': {e}，切换下一个 key")
+                self._serper_idx += 1
+                continue
+        logger.warning(f"[Radar] Serper 全部 {len(keys)} 个 key 都不可用（最后：{last}）")
+        return []
 
     # ── 自动搜竞品官网（auto_search）─────────────────────────────────────────
 
     def search_competitors(self, limit: int = 8) -> list:
-        if not self.serper_key:
+        if not (self.serper_keys or self.serper_key):
             return []
         terms = []
         if self.product_name:
@@ -513,23 +643,30 @@ class CompetitorRadar:
     # ── 源①：反向经销商搜索（主引擎，本地化）────────────────────────────────
 
     def search_distributors(self, keys, comp_host: str, ex: AIExtractor) -> list:
-        if not self.serper_key or not keys:
+        if not (self.serper_keys or self.serper_key) or not keys:
             return []
         primary = keys[0]
         results, seen = [], set()
 
-        # 用品牌名/型号做通用经销商查询
+        # 用品牌名/型号做通用经销商查询（焦点国家时所有查询已自动带 gl 地区定向）
         for k in keys[:2]:
             q = (f'"{k}" (distributor OR dealer OR "authorized dealer" '
                  f'OR reseller OR agent OR 经销商 OR 代理)')
             self._collect(q, results, seen, comp_host, skip_platform=True)
 
-        # 按目标国家语言本地化查询
-        for cn in (self.target_countries or [])[:3]:
-            en, lang = self._country_info(cn)
-            terms = _LANG_TERMS.get(lang, _LANG_TERMS["en"])
-            q = f'"{primary}" ({" OR ".join(terms[:3])}) {en}'
+        # 本地化经销商查询：
+        #   选了「重点扫描国家」→ 只针对该国、用其语言的经销商词（精准、省额度）；
+        #   没选 → 退回原行为，扫目标市场前 3 国（每条不带 gl）。
+        if self._focus_en:
+            terms = _LANG_TERMS.get(self._hl, _LANG_TERMS["en"])
+            q = f'"{primary}" ({" OR ".join(terms[:3])}) {self._focus_en}'
             self._collect(q, results, seen, comp_host, skip_platform=True)
+        else:
+            for cn in (self.target_countries or [])[:3]:
+                en, lang = self._country_info(cn)
+                terms = _LANG_TERMS.get(lang, _LANG_TERMS["en"])
+                q = f'"{primary}" ({" OR ".join(terms[:3])}) {en}'
+                self._collect(q, results, seen, comp_host, skip_platform=True)
 
         return self._leads_from_results(primary, comp_host,
                                         results[:self.max_results], "reverse", ex)
@@ -537,7 +674,7 @@ class CompetitorRadar:
     # ── 源②：本地电商 + 社媒 ─────────────────────────────────────────────────
 
     def search_marketplaces(self, keys, comp_host: str, ex: AIExtractor) -> list:
-        if not self.serper_key or not keys:
+        if not (self.serper_keys or self.serper_key) or not keys:
             return []
         primary = keys[0]
         groups = [
@@ -559,7 +696,7 @@ class CompetitorRadar:
     # ── 源④：海关反查（公开聚合页）──────────────────────────────────────────
 
     def customs_lookup(self, keys, comp_host: str, ex: AIExtractor) -> list:
-        if not self.serper_key or not keys:
+        if not (self.serper_keys or self.serper_key) or not keys:
             return []
         primary = keys[0]
         results, seen = [], set()

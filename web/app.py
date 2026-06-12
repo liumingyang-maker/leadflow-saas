@@ -1266,6 +1266,14 @@ def radar_run():
     sources     = body.get("sources")
     if not isinstance(sources, list) or not sources:
         sources = ["reverse", "social", "website", "customs"]
+    # 本次重点扫描国家（客户从下拉选或手填）：用 Google 该国本地索引精准搜，治"结果全是热门市场"
+    focus_country = (body.get("focus_country") or "").strip()[:40]
+    if focus_country:
+        from module1_collectors.competitor_radar import resolve_focus_country
+        if not resolve_focus_country(focus_country):
+            return jsonify({"ok": False, "error":
+                f"没认出国家「{focus_country}」。请从下拉里选，"
+                "或填标准国家名（如 尼日利亚 / Nigeria）。"}), 400
 
     # 解析用户填的网址（换行/逗号分隔）
     urls = []
@@ -1301,21 +1309,27 @@ def radar_run():
             from module1_collectors.competitor_radar import CompetitorRadar
             from module2_cleaner import DataCleaner
 
+            from api_quota import parse_keys
             radar_eng = CompetitorRadar()
             radar_eng.deepseek_key    = cfg.get("deepseek_api_key", "")
-            radar_eng.serper_key      = cfg.get("serpapi_key", "")
+            radar_eng.serper_keys     = parse_keys(cfg.get("serpapi_key", ""))  # 多 key 自动容错
             radar_eng.hunter_key      = cfg.get("hunter_api_key", "")
             radar_eng.product_name    = cfg.get("product_name", "")
             radar_eng.search_keywords = cfg.get("search_keywords", [])
             radar_eng.target_countries = cfg.get("target_countries", [])
+            radar_eng.focus_country   = focus_country
             radar_eng.sources         = sources
             radar_eng.proxy           = cfg.get("radar_proxy", "")
             _prof = cfg.get("product_profile") or {}
             radar_eng.my_category     = _prof.get("category") or cfg.get("product_name", "")
             radar_eng.product_i18n    = _prof.get("keywords_i18n") or {}
+            if focus_country:
+                logs.append(f"🎯 本次重点扫描国家：{focus_country}（用 Google 该国本地索引精准搜）")
 
             out = radar_eng.run(urls=urls, auto_search=auto_search,
                                 want_intel=True, max_competitors=8)
+            # 记录 Serper 本月用量（成功调用数 = 消耗的额度），给工作台「API 额度」卡用
+            admin_db.add_api_usage(tid, "serper", out.get("serper_calls", 0))
 
             # 三个搜索源（反向/电商社媒/海关反查）都靠 Serper，没配就只剩官网扫描
             search_srcs = [s for s in sources if s in ("reverse", "social", "customs")]
@@ -1361,16 +1375,17 @@ def radar_run():
                         + ("，已纳入定期监控" if monitor
                            else "（已存入下方列表，挑你想长期盯的单独开启「定期监控」）"))
 
-            if out.get("serper_calls"):
-                fails = out.get("serper_fails", 0)
-                if fails and fails >= out["serper_calls"]:
-                    logs.append(f"❌ Serper 搜索 {out['serper_calls']} 次全部失败"
-                                "（key 无效/额度用尽？）——反向/社媒/海关源都没出数据，"
-                                "请检查系统设置里的 SerpAPI Key 是不是 serper.dev 的有效 key。")
+            calls = out.get("serper_calls", 0)
+            fails = out.get("serper_fails", 0)
+            if calls or fails:
+                if calls == 0 and fails:
+                    logs.append(f"❌ Serper 搜索全部失败（{fails} 次，key 无效/额度用尽？）"
+                                "——反向/社媒/海关源都没出数据。请检查系统设置里的 Serper Key；"
+                                "若填了多个 key 会自动切换，全失败说明都不可用。")
                 elif fails:
-                    logs.append(f"本次 Serper 搜索 {out['serper_calls']} 次，其中 {fails} 次失败")
+                    logs.append(f"本次消耗 Serper 搜索 {calls} 次（另有 {fails} 次失败已自动切 key/跳过）")
                 else:
-                    logs.append(f"本次消耗 Serper 搜索 {out['serper_calls']} 次")
+                    logs.append(f"本次消耗 Serper 搜索 {calls} 次")
 
             if out.get("errors"):
                 logs.append("部分竞品处理出错：" + "；".join(out["errors"][:3]))
@@ -1411,6 +1426,33 @@ def radar_seen(cid):
 def radar_delete(cid):
     admin_db.delete_competitor(current_tid(), cid)
     return jsonify({"ok": True})
+
+
+@app.route("/api/quota")
+@onboarding_required
+def api_quota_view():
+    """各 API 服务的额度/余额（工作台「API 额度」卡 AJAX 拉取）。
+    DeepSeek/Hunter 查真实余额；Serper 无公开余额接口 → 本系统本月用量 vs 客户填的套餐上限。"""
+    tid = current_tid()
+    cfg = current_cfg()
+    from api_quota import deepseek_balance, hunter_account, parse_keys
+    ds = parse_keys(cfg.get("deepseek_api_key", ""))
+    hu = parse_keys(cfg.get("hunter_api_key", ""))
+    sk = parse_keys(cfg.get("serpapi_key", ""))
+    out = {
+        "deepseek": deepseek_balance(ds[0]) if ds else {"ok": False, "reason": "未配置"},
+        "hunter":   hunter_account(hu[0]) if hu else {"ok": False, "reason": "未配置"},
+    }
+    used = admin_db.get_api_usage(tid, "serper")
+    per  = int(cfg.get("serper_quota") or 0)        # 客户填的"每个 key 每月额度"
+    limit = per * len(sk) if (per and sk) else 0     # 多 key 总额度
+    out["serper"] = {
+        "ok": bool(sk), "kind": "local", "keys": len(sk),
+        "used": used, "limit": limit,
+        "remaining": (limit - used) if limit else None,
+        "reason": None if sk else "未配置",
+    }
+    return jsonify(out)
 
 
 # ─────────────────────────────────────────────────────────
@@ -1530,6 +1572,17 @@ def settings():
             v = request.form.get(k, "").strip()[:200]
             if v:
                 cfg[k] = v
+        # 可填多个 key（换行/逗号分隔，一个用尽自动切下一个）→ 放宽长度上限
+        for k in ("serpapi_key", "deepseek_api_key", "hunter_api_key"):
+            v = request.form.get(k, "").strip()[:2000]
+            if v:
+                cfg[k] = v
+        # Serper 套餐额度（每个 key 每月，用于「API 额度」卡估算剩余；纯数字）
+        sq = request.form.get("serper_quota", "").strip().replace(",", "")
+        if sq.isdigit():
+            cfg["serper_quota"] = int(sq)
+        elif request.form.get("serper_quota") is not None and not sq:
+            cfg["serper_quota"] = 0
         # 签名可较长，单独处理
         sig = request.form.get("email_signature", "").strip()[:1000]
         if sig:
@@ -2072,9 +2125,10 @@ def process_due_competitors() -> int:
                     snapshot_hash=c.get("snapshot_hash", ""),
                     frequency_days=c.get("frequency_days", 7), monitor=True)
                 continue
+            from api_quota import parse_keys
             eng = CompetitorRadar()
             eng.deepseek_key = cfg.get("deepseek_api_key", "")
-            eng.serper_key   = cfg.get("serpapi_key", "")
+            eng.serper_keys  = parse_keys(cfg.get("serpapi_key", ""))
             eng.product_name = cfg.get("product_name", "")
             eng.target_countries = cfg.get("target_countries", [])
             eng.proxy        = cfg.get("radar_proxy", "")
@@ -2083,6 +2137,7 @@ def process_due_competitors() -> int:
             eng.product_i18n = _prof.get("keywords_i18n") or {}
             out = eng.run(urls=[c["url"]], auto_search=False,
                           want_intel=True, max_competitors=1)
+            admin_db.add_api_usage(tid, "serper", out.get("serper_calls", 0))
             dist = out.get("distributors", [])
             if dist:
                 DataCleaner().run(dist, source="competitor_radar",

@@ -155,6 +155,40 @@
 </div>
 {% endif %}
 
+<!-- API 额度 -->
+<div class="card card-pad">
+  <div class="card-title">📊 API 额度</div>
+  <div id="quotaBody" style="font-size:12.5px;color:var(--muted)">加载中…</div>
+  <p style="font-size:11px;color:var(--faint);margin-top:8px;line-height:1.5">
+    DeepSeek/Hunter 为接口实时余额；Serper 无公开余额接口，显示<b>本系统本月用量</b>（<a href="/settings">填套餐额度</a>后可估剩余）。
+  </p>
+</div>
+<script>
+(function(){
+  var box = document.getElementById('quotaBody');
+  if(!box) return;
+  function row(name, val){
+    return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid #f3f5f9">'
+      + '<span>'+name+'</span><span style="font-weight:600;text-align:right">'+val+'</span></div>';
+  }
+  function dim(t){ return '<span style="color:#94a3b8;font-weight:400">'+t+'</span>'; }
+  fetch('/api/quota').then(function(r){return r.json();}).then(function(d){
+    var html = '';
+    var ds = d.deepseek||{};
+    html += row('⚡ DeepSeek', ds.ok ? ('¥'+(ds.balance!=null?ds.balance:'—')) : dim(ds.reason||'—'));
+    var hu = d.hunter||{};
+    html += row('🔎 Hunter', hu.ok ? ((hu.remaining!=null?hu.remaining:'—')+' 次剩余') : dim(hu.reason||'—'));
+    var sp = d.serper||{};
+    var spv;
+    if(!sp.keys){ spv = dim('未配置'); }
+    else if(sp.limit){ spv = sp.used+' / '+sp.limit+(sp.remaining!=null?'（剩 '+sp.remaining+'）':''); }
+    else { spv = sp.used+' 次'+dim('（本月已用）'); }
+    html += row('🛰️ Serper'+(sp.keys?(' ×'+sp.keys):''), spv);
+    box.innerHTML = html;
+  }).catch(function(){ box.textContent = '额度查询暂不可用'; });
+})();
+</script>
+
 <!-- 使用教程 -->
 <div class="card card-pad">
   <div class="card-title">📘 快速上手</div>

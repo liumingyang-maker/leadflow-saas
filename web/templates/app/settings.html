@@ -473,7 +473,6 @@ renderI18n(ppI18nData);
     <p style="font-size:12px;color:#6b7280;margin-bottom:16px">不填用演示数据，填了才能采集真实买家</p>
     {% for fname,label,hint in [
       ('importyeti_api_key','ImportYeti API Key','海关进口数据，$99/月'),
-      ('serpapi_key','SerpAPI Key','Google搜索采集，$50/月'),
       ('hunter_api_key','Hunter.io API Key','邮箱查找，免费50次/月'),
       ('youtube_api_key','YouTube Data API Key','YouTube评论/简介获客，Google免费申请（不填用yt-dlp）'),
       ('apify_token','Apify Token','TikTok获客（按量付费），apify.com 获取'),
@@ -487,6 +486,27 @@ renderI18n(ppI18nData);
              style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace">
     </div>
     {% endfor %}
+
+    <!-- Serper（Google 搜索）：支持多 key 自动容错 + 额度统计 -->
+    <div style="border-top:1px dashed #e2e8f0;padding-top:14px;margin-top:4px">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:4px">
+        Serper API Key（Google 搜索采集 · 渠道雷达主力）
+        <span style="font-weight:400;color:#9ca3af;font-size:12px">serper.dev，$50/月或免费额度</span>
+      </label>
+      <textarea name="serpapi_key" rows="3" placeholder="可填多个 key，每行一个 —— 一个额度用尽自动切换下一个"
+                style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box">{{ cfg.get('serpapi_key','') }}</textarea>
+      <p style="font-size:12px;color:#6b7280;margin:6px 0 0;line-height:1.6">
+        💡 <b>多 key 容错</b>：填多个（每行一个），系统调用时一个报额度用尽/失效会<b>自动切到下一个</b>，扫描不中断。
+        <span style="color:#9ca3af">（你怎么拿到这些 key 由你决定；本系统只负责"填了几个就轮着用"。）</span>
+      </p>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <label style="font-size:13px;color:#374151;white-space:nowrap">每个 key 每月额度</label>
+        <input type="text" name="serper_quota" value="{{ cfg.get('serper_quota','') or '' }}"
+               placeholder="如 2500（选填，用于工作台估算剩余）"
+               style="width:220px;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        <span style="font-size:12px;color:#9ca3af">填了才能在工作台显示"已用 / 剩余"</span>
+      </div>
+    </div>
   </div>
 
   <!-- 渠道雷达：代理（高级·可选）-->

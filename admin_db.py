@@ -120,6 +120,15 @@ def init():
             );
             CREATE UNIQUE INDEX IF NOT EXISTS idx_competitor_host
                 ON competitors(tenant_id, host);
+
+            -- API 本地用量计数（Serper 没有公开余额接口 → 本系统按月统计调用数）
+            CREATE TABLE IF NOT EXISTS api_usage (
+                tenant_id  TEXT NOT NULL,
+                provider   TEXT NOT NULL,
+                period     TEXT NOT NULL,        -- YYYY-MM，按月统计便于"本月已用"
+                used       INTEGER DEFAULT 0,
+                PRIMARY KEY (tenant_id, provider, period)
+            );
         """)
         try:
             conn.execute("ALTER TABLE tenants ADD COLUMN email_verified INTEGER DEFAULT 0")
@@ -573,6 +582,35 @@ def get_open_stats(tenant_id: str) -> dict:
         "open_rate": round(opened / sent * 100, 1) if sent else 0.0,
         "click_rate": round(clicked / sent * 100, 1) if sent else 0.0,
     }
+
+
+# ── API 本地用量计数（Serper 等无余额接口的服务）────────────
+
+def _usage_period() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+def add_api_usage(tenant_id: str, provider: str, n: int = 1) -> None:
+    """累加某租户某服务本月的调用数（n<=0 直接忽略）。"""
+    if not tenant_id or not provider or not n or n <= 0:
+        return
+    p = _usage_period()
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO api_usage(tenant_id, provider, period, used) "
+            "VALUES(?,?,?,?) "
+            "ON CONFLICT(tenant_id, provider, period) "
+            "DO UPDATE SET used = used + ?",
+            (tenant_id, provider, p, int(n), int(n)))
+
+
+def get_api_usage(tenant_id: str, provider: str) -> int:
+    """某租户某服务【本月】已用调用数。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT used FROM api_usage WHERE tenant_id=? AND provider=? AND period=?",
+            (tenant_id, provider, _usage_period())).fetchone()
+    return (row["used"] if row else 0) or 0
 
 
 # ── 渠道雷达：竞品监控 ─────────────────────────────────────

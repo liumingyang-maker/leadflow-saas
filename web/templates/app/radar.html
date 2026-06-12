@@ -93,6 +93,25 @@
   </div>
 
   <div style="margin-top:16px;padding-top:14px;border-top:1px dashed #e2e8f0">
+    <h3 style="font-size:13px;font-weight:700;color:#1e293b;margin:0 0 4px">🎯 本次重点扫描哪个国家？<span style="font-weight:400;color:#9ca3af;font-size:12px">（强烈建议选 · 省额度）</span></h3>
+    <p class="hint" style="margin:0 0 10px">选一个国家，系统就用 <b>Google 该国本地索引</b>精准搜该国的经销商——<b>这能解决"挖出来全是某个热门市场"的问题</b>（比如想要非洲就别让结果全是菲律宾）。不选则按你的目标市场广搜。</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <select id="rdFocus" style="border:1px solid #cbd5e1;border-radius:6px;padding:7px 10px;font-size:13px;min-width:180px">
+        <option value="">不指定（按目标市场广搜）</option>
+        {% for c in cfg.get('target_countries', []) %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <span style="color:#cbd5e1">或</span>
+      <input id="rdFocusText" placeholder="手动输入国家名（如 Nigeria）" autocomplete="off"
+             style="border:1px solid #cbd5e1;border-radius:6px;padding:7px 10px;font-size:13px;flex:1;min-width:160px">
+    </div>
+    {% if not cfg.get('target_countries') %}
+    <p class="hint" style="margin:8px 0 0;color:#d97706">⚠️ 你还没在「系统设置」选目标市场，下拉里没有国家可选——可先去设置选好，或直接手动输入国家名。</p>
+    {% endif %}
+  </div>
+
+  <div style="margin-top:16px;padding-top:14px;border-top:1px dashed #e2e8f0">
     <h3 style="font-size:13px;font-weight:700;color:#1e293b;margin:0 0 4px">③ 用哪些数据源挖？</h3>
     <p class="hint" style="margin:0 0 10px">按重要度排好了，默认全开。后三个标 ⚡ 的需要配 Serper Key。</p>
     <div class="src-grid">
@@ -217,23 +236,29 @@ function updateEstimate(){
   var urls = document.getElementById('rdUrls').value.trim();
   var n = urls ? urls.split(/[\n,;]+/).filter(function(x){return x.trim();}).length : 0;
   if(document.getElementById('rdAuto').checked) n += 8;
+  var focused = !!getFocus();          // 选了重点国家：反向源本地化查询从 3 条降到 1 条
   var per = 0, costy = false;
   document.querySelectorAll('.rd-src:checked').forEach(function(c){
-    if(c.value==='reverse'){ per+=5; costy=true; }
+    if(c.value==='reverse'){ per+=(focused?3:5); costy=true; }
     else if(c.value==='social'){ per+=3; costy=true; }
     else if(c.value==='customs'){ per+=2; costy=true; }
   });
   if(!costy){ el.textContent='ℹ️ 只选了官网扫描，不消耗 Serper 额度（仅用 DeepSeek）。'; return; }
   if(n===0){ el.textContent='ℹ️ 填竞品网址后这里会显示预计 Serper 消耗。'; return; }
-  el.textContent='ℹ️ 预计消耗 Serper 搜索约 '+(n*per)+' 次（'+n+' 家竞品 × 选中的搜索源）。';
+  el.textContent='ℹ️ 预计消耗 Serper 搜索约 '+(n*per)+' 次（'+n+' 家竞品 × 选中的搜索源'
+                 +(focused?' · 已选重点国家，更省':'')+'）。';
 }
 document.addEventListener('DOMContentLoaded', function(){
-  ['rdUrls','rdAuto'].forEach(function(id){
+  ['rdUrls','rdAuto','rdFocus','rdFocusText'].forEach(function(id){
     var e=document.getElementById(id); if(e){ e.addEventListener('input',updateEstimate); e.addEventListener('change',updateEstimate); }
   });
   document.querySelectorAll('.rd-src').forEach(function(c){ c.addEventListener('change',updateEstimate); });
   updateEstimate();
 });
+function getFocus(){
+  var t = (document.getElementById('rdFocusText').value || '').trim();
+  return t || document.getElementById('rdFocus').value || '';
+}
 function runRadar(){
   var urls = document.getElementById('rdUrls').value.trim();
   var auto = document.getElementById('rdAuto').checked;
@@ -250,6 +275,7 @@ function runRadar(){
       urls: urls,
       auto_search: auto,
       sources: sources,
+      focus_country: getFocus(),
       monitor: false
     })
   }).then(function(r){return r.json();}).then(function(d){
