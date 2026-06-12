@@ -1,5 +1,6 @@
 """
-core/mailer.py — 邮件发送工具
+core/mailer.py — 系统邮件发送工具（注册验证 / 密码重置）
+读取 config.SMTP_*（来自 .env / 环境变量）。配阿里云 DirectMail 时只改 .env。
 """
 import smtplib
 import ssl
@@ -11,22 +12,71 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
 
+# 用项目统一 logger：生产 waitress 下 print 会被缓冲、项目日志里看不到，
+# 改 logger 后发信成功/失败原因在「项目日志」可见——配 DirectMail 排错全靠它。
+try:
+    from compat import logger
+except Exception:                                  # pragma: no cover
+    import logging
+    logger = logging.getLogger("leadflow")
+
+
+def _smtp_send(to_email: str, subject: str, html_body: str) -> None:
+    """实际发信，出错抛异常（调用方决定吞还是抛）。"""
+    if not config.SMTP_USER or not config.SMTP_PASS:
+        raise RuntimeError("SMTP_USER / SMTP_PASS 未配置（检查服务器 .env）")
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"{config.SMTP_FROM_NAME} <{config.SMTP_USER}>"
+    msg["To"] = to_email
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    context = ssl.create_default_context()
+    port = int(config.SMTP_PORT)
+    # 465 = SSL；587/25 = STARTTLS（阿里云 DirectMail 两种都支持，常用 465）
+    if port == 465:
+        with smtplib.SMTP_SSL(config.SMTP_HOST, port, context=context, timeout=20) as s:
+            s.login(config.SMTP_USER, config.SMTP_PASS)
+            s.sendmail(config.SMTP_USER, to_email, msg.as_string())
+    else:
+        with smtplib.SMTP(config.SMTP_HOST, port, timeout=20) as s:
+            s.ehlo()
+            s.starttls(context=context)
+            s.login(config.SMTP_USER, config.SMTP_PASS)
+            s.sendmail(config.SMTP_USER, to_email, msg.as_string())
+
 
 def send_email(to_email: str, subject: str, html_body: str) -> bool:
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"{config.SMTP_FROM_NAME} <{config.SMTP_USER}>"
-        msg["To"] = to_email
-        msg.attach(MIMEText(html_body, "html", "utf-8"))
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, context=context) as s:
-            s.login(config.SMTP_USER, config.SMTP_PASS)
-            s.sendmail(config.SMTP_USER, to_email, msg.as_string())
+        _smtp_send(to_email, subject, html_body)
+        logger.info(f"[mailer] 发送成功 → {to_email}（via {config.SMTP_HOST}:{config.SMTP_PORT} "
+                    f"as {config.SMTP_USER}）")
         return True
     except Exception as e:
-        print(f"[mailer] 发送失败 → {e}")
+        logger.warning(f"[mailer] 发送失败 → {to_email}：{type(e).__name__}: {e} "
+                       f"（host={config.SMTP_HOST}:{config.SMTP_PORT} user={config.SMTP_USER}）")
         return False
+
+
+def smtp_diagnose(to_email: str) -> dict:
+    """测试发信：返回当前 SMTP 配置 + 成功/失败原因，给后台「测试发信」按钮用。
+    密码做掩码，不回显明文。"""
+    info = {
+        "host": config.SMTP_HOST,
+        "port": config.SMTP_PORT,
+        "user": config.SMTP_USER,
+        "from_name": config.SMTP_FROM_NAME,
+        "pass_set": bool(config.SMTP_PASS),
+    }
+    try:
+        _smtp_send(to_email,
+                   "【获客雷达】测试邮件",
+                   "<p>这是一封测试邮件。能收到说明发信通道已打通 ✅</p>")
+        logger.info(f"[mailer] 测试发信成功 → {to_email}")
+        return {"ok": True, "detail": "发送成功，请去收件箱（含垃圾箱）查收", **info}
+    except Exception as e:
+        detail = f"{type(e).__name__}: {e}"
+        logger.warning(f"[mailer] 测试发信失败 → {to_email}：{detail}")
+        return {"ok": False, "detail": detail, **info}
 
 
 def send_verification_email(to_email: str, token: str) -> bool:

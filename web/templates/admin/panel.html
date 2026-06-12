@@ -84,6 +84,22 @@ tr:hover td{background:#243349}
     <div class="stat"><div class="num" style="color:#f87171">{{ suspended }}</div><div class="lbl">已暂停</div></div>
   </div>
 
+  <!-- 测试发信（配 DirectMail 后一键验证系统邮件通道）-->
+  <div class="card" style="margin-bottom:28px">
+    <div class="card-header"><h2>📧 测试系统发信通道</h2>
+      <span style="font-size:12px;color:#64748b">注册/验证邮件用的 SMTP（配阿里云 DirectMail 后点这里验证）</span>
+    </div>
+    <div style="padding:16px 20px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="mailTo" type="email" placeholder="收件邮箱（填你自己的，如 qq 邮箱）"
+               style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:8px 12px;font-size:13px;min-width:280px">
+        <button class="btn-sm btn-green" type="button" onclick="testMail()">发送测试邮件</button>
+        <span id="mailMsg" style="font-size:13px;color:#94a3b8"></span>
+      </div>
+      <div id="mailDiag" style="margin-top:10px;font-size:12px;color:#64748b;font-family:monospace;white-space:pre-wrap;line-height:1.6"></div>
+    </div>
+  </div>
+
   <!-- 客户列表 -->
   <div class="card">
     <div class="card-header">
@@ -204,6 +220,24 @@ tr:hover td{background:#243349}
 function toggleBox(id){
   var e=document.getElementById(id);
   if(e) e.style.display=(e.style.display==='none'||!e.style.display)?'':'none';
+}
+function testMail(){
+  var to = (document.getElementById('mailTo').value||'').trim();
+  var msg = document.getElementById('mailMsg');
+  var diag = document.getElementById('mailDiag');
+  if(to.indexOf('@')<0){ msg.textContent='请填一个有效邮箱'; msg.style.color='#f87171'; return; }
+  msg.textContent='⏳ 发送中…'; msg.style.color='#94a3b8'; diag.textContent='';
+  fetch('/admin/mail-test',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({to:to})}).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){ msg.textContent='✅ '+(d.detail||'发送成功'); msg.style.color='#34d399'; }
+    else { msg.textContent='❌ 发送失败'; msg.style.color='#f87171'; }
+    diag.textContent =
+      'host: '+(d.host||'-')+':'+(d.port||'-')+'\n'+
+      'user: '+(d.user||'(未配置)')+'\n'+
+      'pass: '+(d.pass_set?'已设置':'❌ 未设置')+'\n'+
+      'from: '+(d.from_name||'-')+'\n'+
+      '结果: '+(d.detail||'-');
+  }).catch(function(){ msg.textContent='请求出错'; msg.style.color='#f87171'; });
 }
 </script>
 </body>

@@ -1858,6 +1858,19 @@ def admin_panel():
     return render_template("admin/panel.html", tenants=admin_db.all_tenants())
 
 
+@app.route("/admin/mail-test", methods=["POST"])
+@admin_required
+def admin_mail_test():
+    """测试系统发信通道（注册/验证邮件用的 SMTP）。配 DirectMail 后点这个一键验证，
+    不用每次去注册假账号。返回当前 SMTP 配置 + 成功/失败原因。"""
+    to = request.form.get("to") or (request.get_json(silent=True) or {}).get("to") or ""
+    to = to.strip()
+    if "@" not in to:
+        return jsonify({"ok": False, "detail": "请填一个有效的收件邮箱"}), 400
+    from mailer import smtp_diagnose
+    return jsonify(smtp_diagnose(to))
+
+
 @app.route("/admin/pipeline")
 @admin_required
 def admin_pipeline():
