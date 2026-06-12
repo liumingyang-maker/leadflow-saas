@@ -420,8 +420,9 @@ class Database:
 
     def search_leads(self, keyword: str = None, country: str = None,
                      grade: str = None, status: str = None,
-                     min_score: int = None, limit: int = 50,
-                     offset: int = 0) -> tuple[list[dict], int]:
+                     min_score: int = None, source: str = None,
+                     notes_like: str = None,
+                     limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
         """
         多条件搜索，返回 (结果列表, 总数)。
         用于看板的列表页。
@@ -445,6 +446,13 @@ class Database:
         if min_score is not None:
             conditions.append("final_score >= ?")
             params.append(min_score)
+        if source:
+            # sources 列存的是 JSON 串如 '["competitor_radar"]'，按 token 模糊匹配
+            conditions.append("sources LIKE ?")
+            params.append(f'%"{source}"%')
+        if notes_like:
+            conditions.append("notes LIKE ?")
+            params.append(f"%{notes_like}%")
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

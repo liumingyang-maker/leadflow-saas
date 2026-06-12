@@ -9,6 +9,28 @@
   <div style="font-size:13px;color:var(--muted);margin-top:3px">欢迎回到 LeadFlow，今天也去挖到好客户吧。</div>
 </div>
 
+{% if review_count and review_count > 0 %}
+<!-- 渠道雷达「待确认」线索提醒 -->
+<a href="/leads?status=review"
+   style="display:flex;align-items:center;gap:12px;text-decoration:none;
+          background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fcd34d;
+          border-radius:12px;padding:14px 18px;margin-bottom:18px">
+  <span style="position:relative;flex-shrink:0">
+    <span style="font-size:22px">🔍</span>
+    <span style="position:absolute;top:-4px;right:-6px;background:#dc2626;color:#fff;
+                 font-size:11px;font-weight:700;min-width:18px;height:18px;line-height:18px;
+                 text-align:center;border-radius:9px;padding:0 5px">{{ review_count }}</span>
+  </span>
+  <span style="flex:1">
+    <span style="display:block;font-size:14px;font-weight:700;color:#92400e">
+      {{ review_count }} 条「待确认」线索等你核对</span>
+    <span style="display:block;font-size:12.5px;color:#b45309;margin-top:2px">
+      渠道雷达挖到的中等匹配线索，AI 拿不准是否合格 —— 点开扫一眼，对的留、错的删。</span>
+  </span>
+  <span style="flex-shrink:0;font-size:13px;font-weight:600;color:#b45309">去核对 →</span>
+</a>
+{% endif %}
+
 <!-- 关键数据 -->
 <div class="stat-grid">
   {% for label, val, color in [

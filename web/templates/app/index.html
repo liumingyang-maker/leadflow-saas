@@ -29,6 +29,7 @@
   <form method="GET" action="/leads" style="background:#fff;border:1px solid #e2e8f0;
         border-radius:8px;padding:14px 16px;margin-bottom:16px;
         display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    {% if filters.competitor %}<input type="hidden" name="competitor" value="{{ filters.competitor }}">{% endif %}
     <input name="q" value="{{ filters.q or '' }}" placeholder="搜索公司/联系人/邮箱..."
            style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;
                   font-size:13px;min-width:200px">
@@ -40,8 +41,16 @@
     </select>
     <select name="status" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
       <option value="">全部状态</option>
-      {% for s,l in [('new','新建'),('scored','已评分'),('contacted','已联系'),('replied','已回复'),('converted','已成交')] %}
+      {% for s,l in [('new','新建'),('review','🔍待确认'),('scored','已评分'),('contacted','已联系'),('replied','已回复'),('converted','已成交')] %}
       <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ l }}</option>
+      {% endfor %}
+    </select>
+    <select name="source" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="">全部来源</option>
+      {% for s,l in [('competitor_radar','🛰️ 渠道雷达'),('importyeti','美国海关'),('zauba','印度海关'),
+                     ('google_maps','Google地图'),('alibaba_rfq','阿里RFQ'),('europages','Europages'),
+                     ('apollo','Apollo'),('youtube','YouTube'),('tiktok','TikTok'),('独立站询盘','独立站询盘')] %}
+      <option value="{{ s }}" {{ 'selected' if filters.source == s }}>{{ l }}</option>
       {% endfor %}
     </select>
     <select name="country" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
@@ -53,6 +62,14 @@
     <button type="submit" class="btn btn-primary" style="font-size:13px">筛选</button>
     <a href="/leads" class="btn" style="font-size:13px">重置</a>
   </form>
+
+  {% if filters.competitor %}
+  <div style="display:flex;align-items:center;gap:10px;background:#eff6ff;border:1px solid #bfdbfe;
+              border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">
+    <span style="color:#1e40af">🛰️ 正在查看竞品 <b>{{ filters.competitor }}</b> 挖出的渠道商（共 {{ total }} 家）</span>
+    <a href="/leads" style="margin-left:auto;color:#2563eb;text-decoration:none">✕ 清除竞品筛选</a>
+  </div>
+  {% endif %}
 
   <!-- 客户表格 -->
   <div class="table-wrap">
@@ -98,7 +115,7 @@
           <td style="text-align:center;color:#6b7280">{{ lead.import_count_6m or '—' }}</td>
           <td>
             <span class="status-badge status-{{ lead.status or 'new' }}">
-              {{ {'new':'新建','scored':'已评分','contacted':'已联系',
+              {{ {'new':'新建','review':'🔍待确认','scored':'已评分','contacted':'已联系',
                   'replied':'已回复','converted':'已成交','rejected':'已拒绝'}.get(lead.status,'新建') }}
             </span>
           </td>

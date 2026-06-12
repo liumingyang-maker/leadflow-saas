@@ -159,9 +159,13 @@ class Cleaner:
             if country_obj:
                 standard = country_obj.name
             else:
-                # 模糊搜索
-                results = pycountry.countries.search_fuzzy(raw)
-                standard = results[0].name if results else raw
+                # 模糊搜索（pycountry 对 "Ivory Coast"/"DR Congo" 等会抛 LookupError，
+                # 必须兜住，否则一条无法匹配的国家名会拖垮整批清洗）
+                try:
+                    results = pycountry.countries.search_fuzzy(raw)
+                    standard = results[0].name if results else raw
+                except Exception:
+                    standard = raw
 
         # 获取ISO代码（先精确匹配，再模糊搜索，兼容 Ivory Coast 等别名）
         try:
@@ -332,7 +336,7 @@ class Cleaner:
             "estimated_value_usd": raw.get("estimated_value_usd"),
             # 元数据
             "sources": sources,
-            "status": "new",
+            "status": raw.get("status") or "new",   # 渠道雷达可传 review(待确认)
             # 评分字段（清洗阶段为空，由 module3 填充）
             "rule_score": None,
             "ai_score_adjustment": None,

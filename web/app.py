@@ -445,6 +445,10 @@ def workbench():
         email_stats = {"sent": 0, "opened": 0, "open_rate": 0.0}
     recent_leads, _ = db.search_leads(limit=6, offset=0)
     try:
+        _, review_count = db.search_leads(status="review", limit=1, offset=0)
+    except Exception:
+        review_count = 0
+    try:
         from pipeline_config import pipeline_summary
         pipeline = pipeline_summary()
     except Exception:
@@ -453,6 +457,7 @@ def workbench():
                            stats=db.get_stats(),
                            email_stats=email_stats,
                            recent_leads=recent_leads,
+                           review_count=review_count,
                            pipeline=pipeline,
                            history=db.get_collection_history(limit=5))
 
@@ -478,12 +483,17 @@ def leads_list():
     grade    = request.args.get("grade")
     status   = request.args.get("status")
     country  = request.args.get("country")
+    source   = request.args.get("source")
+    competitor = request.args.get("competitor", "")[:120]
     keyword  = request.args.get("q", "")[:100]
     page     = max(1, int(request.args.get("page", 1)))
     per_page = 50
     offset   = (page - 1) * per_page
+    # 点竞品卡的"X 经销商"跳来：只看该竞品挖出的渠道商（线索 notes 里有"竞品 {host}"）
+    notes_like = f"竞品 {competitor}" if competitor else None
     leads, total = db.search_leads(keyword=keyword, country=country,
-                                   grade=grade, status=status,
+                                   grade=grade, status=status, source=source,
+                                   notes_like=notes_like,
                                    limit=per_page, offset=offset)
     total_pages = max(1, (total + per_page - 1) // per_page)
     return render_template("app/index.html", cfg=current_cfg(),
@@ -492,7 +502,8 @@ def leads_list():
                            countries=db.get_all_countries(),
                            page=page, total_pages=total_pages,
                            filters={"grade": grade, "status": status,
-                                    "country": country, "q": keyword})
+                                    "country": country, "q": keyword,
+                                    "source": source, "competitor": competitor})
 
 
 @app.route("/lead/<lead_id>")
@@ -1214,10 +1225,28 @@ def _radar_snapshot(distributors: list, intel: dict) -> str:
 def radar():
     tid = current_tid()
     cfg = current_cfg()
-    competitors = admin_db.list_competitors(tid)
-    has_keys = bool(cfg.get("deepseek_api_key"))
+    sort = request.args.get("sort", "")
+    all_comps = admin_db.list_competitors(tid)
+    if sort == "dist":          # 按经销商数排序，看哪个竞品最能产线索
+        all_comps = sorted(all_comps,
+                           key=lambda c: c.get("distributor_count") or 0, reverse=True)
+    per_page  = 12
+    total     = len(all_comps)
+    pages     = max(1, (total + per_page - 1) // per_page)
+    cp        = min(max(1, int(request.args.get("cp", 1) or 1)), pages)
+    competitors = all_comps[(cp - 1) * per_page: cp * per_page]
+    has_keys  = bool(cfg.get("deepseek_api_key"))
     return render_template("app/radar.html", competitors=competitors,
-                           cfg=cfg, has_keys=has_keys)
+                           cfg=cfg, has_keys=has_keys, comp_sort=sort,
+                           comp_total=total, comp_page=cp, comp_pages=pages)
+
+
+@app.route("/radar/cleanup", methods=["POST"])
+@onboarding_required
+def radar_cleanup():
+    """清理"单次扫描"的竞品卡（status=once，从没开监控的），收拾列表。已入库线索不动。"""
+    n = admin_db.delete_once_competitors(current_tid())
+    return jsonify({"ok": True, "deleted": n})
 
 
 @app.route("/radar/run", methods=["POST"])
@@ -1229,8 +1258,14 @@ def radar_run():
     body = request.get_json(silent=True) or {}
     raw_urls    = body.get("urls", "")
     auto_search = bool(body.get("auto_search"))
-    monitor     = bool(body.get("monitor", True))
+    # 监控改为按竞品单独开启（扫描只跑一次，竞品先以 once 入列表，
+    # 用户在列表里挑真正想长期盯的逐个开「定期监控」）
+    monitor     = bool(body.get("monitor", False))
     freq        = int(body.get("frequency_days", 7) or 7)
+    # 四源开关（前端勾选），缺省四个都开
+    sources     = body.get("sources")
+    if not isinstance(sources, list) or not sources:
+        sources = ["reverse", "social", "website", "customs"]
 
     # 解析用户填的网址（换行/逗号分隔）
     urls = []
@@ -1239,7 +1274,16 @@ def radar_run():
     elif isinstance(raw_urls, str):
         urls = [u.strip() for u in re.split(r"[\n,;\s]+", raw_urls) if u.strip()]
 
+    # 拦掉明显不是竞品官网的门户/平台/社交站（新浪/Instagram/淘宝…），别浪费额度也别进竞品列表
+    from module1_collectors.competitor_radar import is_invalid_competitor_url
+    bad_urls = [u for u in urls if is_invalid_competitor_url(u)]
+    urls     = [u for u in urls if not is_invalid_competitor_url(u)]
+
     if not urls and not auto_search:
+        if bad_urls:
+            return jsonify({"ok": False, "error":
+                "你填的不是竞品官网（新浪/Instagram/淘宝等门户·平台·社交站不是竞品）。"
+                "请填同行公司的官网首页，例如 loncin.com、zongshen.com。"}), 400
         return jsonify({"ok": False, "error": "请填竞品网址，或勾选「让系统自动搜竞品」"}), 400
     if not cfg.get("deepseek_api_key"):
         return jsonify({"ok": False, "error": "渠道雷达需要先在「系统设置」填 DeepSeek API Key"}), 400
@@ -1250,6 +1294,9 @@ def radar_run():
 
     def run_bg():
         logs = []
+        if bad_urls:
+            logs.append("已跳过非竞品网址（门户/平台/社交站，不会扫）："
+                        + "、".join(bad_urls[:5]))
         try:
             from module1_collectors.competitor_radar import CompetitorRadar
             from module2_cleaner import DataCleaner
@@ -1260,21 +1307,40 @@ def radar_run():
             radar_eng.hunter_key      = cfg.get("hunter_api_key", "")
             radar_eng.product_name    = cfg.get("product_name", "")
             radar_eng.search_keywords = cfg.get("search_keywords", [])
+            radar_eng.target_countries = cfg.get("target_countries", [])
+            radar_eng.sources         = sources
             radar_eng.proxy           = cfg.get("radar_proxy", "")
+            _prof = cfg.get("product_profile") or {}
+            radar_eng.my_category     = _prof.get("category") or cfg.get("product_name", "")
+            radar_eng.product_i18n    = _prof.get("keywords_i18n") or {}
 
             out = radar_eng.run(urls=urls, auto_search=auto_search,
                                 want_intel=True, max_competitors=8)
+
+            # 三个搜索源（反向/电商社媒/海关反查）都靠 Serper，没配就只剩官网扫描
+            search_srcs = [s for s in sources if s in ("reverse", "social", "customs")]
+            if search_srcs and not cfg.get("serpapi_key"):
+                logs.append("⚠️ 反向搜索/电商社媒/海关反查都需要 Serper Key，"
+                            "当前未配置，本次只跑了官网扫描。去「系统设置」填 Serper Key 可大幅提升挖掘量。")
 
             dist = out.get("distributors", [])
             if dist:
                 st = DataCleaner().run(dist, source="competitor_radar",
                                        db_path=tenant_ctx.get_db_path(tid))
-                logs.append(f"经销商入库：新增 {st.get('db_new',0)} 家"
-                            f"（提取 {len(dist)} 条，去重后写入）")
+                auto_n   = sum(1 for d in dist if d.get("status") == "new")
+                review_n = len(dist) - auto_n
+                msg = (f"渠道商入库：新增 {st.get('db_new',0)} 家"
+                       f"（{len(sources)} 个数据源共提取 {len(dist)} 条）"
+                       f" · 高匹配 {auto_n} 条直接入库")
+                if review_n:
+                    msg += (f"，{review_n} 条「待确认」已入库待你核对"
+                            f"（客户列表筛选状态=待确认）")
+                logs.append(msg)
             else:
-                logs.append("未提取到经销商（竞品页可能没有公开经销商名单，或被反爬拦截）")
+                logs.append("未提取到合格渠道商（低匹配的已被质量闸过滤；"
+                            "竞品可能尚无公开经销商，或全网/海关暂无其品牌线索）")
 
-            # 保存竞品情报卡 + 纳入监控
+            # 保存竞品情报卡 + 纳入监控（带「新增了谁」diff）
             intel_by_host = {c.get("competitor"): c for c in out.get("intel", [])}
             for site in out.get("sites", []):
                 from urllib.parse import urlparse
@@ -1282,14 +1348,21 @@ def radar_run():
                 card = intel_by_host.get(host, {})
                 site_dist = [d for d in dist
                              if host in (d.get("notes") or "")]
+                dist_names = [f"{d['company_name']}({d.get('country') or '?'})"
+                              for d in site_dist]
                 snap = _radar_snapshot(site_dist, card)
                 admin_db.upsert_competitor(
                     tid, url=site, host=host,
                     name=card.get("main_products", "")[:80],
                     intel=card, distributor_count=len(site_dist),
-                    snapshot_hash=snap, frequency_days=freq, monitor=monitor)
+                    snapshot_hash=snap, frequency_days=freq, monitor=monitor,
+                    distributor_names=dist_names)
             logs.append(f"竞品情报卡：{len(out.get('intel', []))} 张"
-                        + ("，已纳入定期监控" if monitor else ""))
+                        + ("，已纳入定期监控" if monitor
+                           else "（已存入下方列表，挑你想长期盯的单独开启「定期监控」）"))
+
+            if out.get("serper_calls"):
+                logs.append(f"本次消耗 Serper 搜索 {out['serper_calls']} 次")
 
             if out.get("errors"):
                 logs.append("部分竞品处理出错：" + "；".join(out["errors"][:3]))
@@ -1336,6 +1409,27 @@ def radar_delete(cid):
 # 系统设置
 # ─────────────────────────────────────────────────────────
 
+@app.route("/product-profile/generate", methods=["POST"])
+@onboarding_required
+def product_profile_generate():
+    """AI 起草「产品搜索画像」：客户描述/产品页 → DeepSeek 结构化搜索词草稿。"""
+    cfg  = current_cfg()
+    body = request.get_json(silent=True) or {}
+    desc = (body.get("description") or "").strip()[:1200]
+    url  = (body.get("url") or "").strip()[:300]
+    if not cfg.get("deepseek_api_key"):
+        return jsonify({"ok": False, "error": "请先在系统设置填 DeepSeek API Key"}), 400
+    if not desc and not url:
+        return jsonify({"ok": False, "error": "请先填产品描述，或贴一个产品页网址"}), 400
+    try:
+        from product_profiler import generate_profile
+        res = generate_profile(cfg["deepseek_api_key"], desc, url,
+                               cfg.get("target_countries"), cfg.get("radar_proxy", ""))
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"生成失败：{e}"}), 500
+    return jsonify(res)
+
+
 @app.route("/settings", methods=["GET", "POST"])
 @onboarding_required
 def settings():
@@ -1352,10 +1446,45 @@ def settings():
             hs_raw = request.form.get("hs_codes", "")
             cfg["hs_codes"] = [h.strip() for h in
                                hs_raw.replace("，", ",").split(",") if h.strip()][:20]
-            kw_raw = request.form.get("search_keywords", "")
-            cfg["search_keywords"] = [k.strip() for k in
-                                      kw_raw.replace("，", ",").replace("\r", "")
-                                      .replace(",", "\n").split("\n") if k.strip()][:30]
+            # 搜索关键词改由「产品搜索画像」派生（见下）；没画像时保留原有 search_keywords 不动
+            # 产品搜索画像（AI 起草 + 客户确认，结构化搜索词库）
+            try:
+                prof = json.loads(request.form.get("product_profile_json", "") or "{}")
+            except Exception:
+                prof = {}
+            if isinstance(prof, dict) and prof.get("keywords_en"):
+                # 规整存储
+                def _plist(key, n):
+                    v = prof.get(key) or []
+                    return [str(x).strip() for x in v if str(x).strip()][:n]
+                i18n = prof.get("keywords_i18n") or {}
+                clean_i18n = {}
+                if isinstance(i18n, dict):
+                    for lg, terms in i18n.items():
+                        terms = [str(x).strip() for x in (terms or []) if str(x).strip()][:6]
+                        if terms:
+                            clean_i18n[lg] = terms
+                cfg["product_profile"] = {
+                    "category":     str(prof.get("category", "")).strip()[:120],
+                    "keywords_en":  _plist("keywords_en", 12),
+                    "synonyms":     _plist("synonyms", 12),
+                    "models":       _plist("models", 10),
+                    "applications": _plist("applications", 8),
+                    "buyer_types":  _plist("buyer_types", 6),
+                    "hs_suggested": _plist("hs_suggested", 8),
+                    "keywords_i18n": clean_i18n,
+                }
+                # 派生 search_keywords：英文词+同义词+型号 → 所有采集器零改动受益
+                derived = []
+                for grp in ("keywords_en", "synonyms", "models"):
+                    for w in cfg["product_profile"][grp]:
+                        if w not in derived:
+                            derived.append(w)
+                if derived:
+                    cfg["search_keywords"] = derived[:30]
+                # HS 没手填则用 AI 建议的兜底
+                if not cfg["hs_codes"] and cfg["product_profile"]["hs_suggested"]:
+                    cfg["hs_codes"] = cfg["product_profile"]["hs_suggested"][:20]
             try:
                 selected_regions   = json.loads(request.form.get("selected_regions", "[]"))
                 excluded_countries = json.loads(request.form.get("excluded_countries", "[]"))
@@ -1938,7 +2067,12 @@ def process_due_competitors() -> int:
             eng = CompetitorRadar()
             eng.deepseek_key = cfg.get("deepseek_api_key", "")
             eng.serper_key   = cfg.get("serpapi_key", "")
+            eng.product_name = cfg.get("product_name", "")
+            eng.target_countries = cfg.get("target_countries", [])
             eng.proxy        = cfg.get("radar_proxy", "")
+            _prof = cfg.get("product_profile") or {}
+            eng.my_category  = _prof.get("category") or cfg.get("product_name", "")
+            eng.product_i18n = _prof.get("keywords_i18n") or {}
             out = eng.run(urls=[c["url"]], auto_search=False,
                           want_intel=True, max_competitors=1)
             dist = out.get("distributors", [])
@@ -1947,10 +2081,13 @@ def process_due_competitors() -> int:
                                   db_path=tenant_ctx.get_db_path(tid))
             card = out.get("intel", [{}])[0] if out.get("intel") else {}
             snap = _radar_snapshot(dist, card)
+            dist_names = [f"{d['company_name']}({d.get('country') or '?'})"
+                          for d in dist]
             admin_db.upsert_competitor(
                 tid, c["url"], c["host"], c.get("name", ""),
                 intel=card, distributor_count=len(dist), snapshot_hash=snap,
-                frequency_days=c.get("frequency_days", 7), monitor=True)
+                frequency_days=c.get("frequency_days", 7), monitor=True,
+                distributor_names=dist_names)
             handled += 1
             print(f"[radar] 已重扫监控竞品 {c['host']} → 经销商 {len(dist)} 家")
         except Exception as e:

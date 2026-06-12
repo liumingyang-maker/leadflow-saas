@@ -51,17 +51,26 @@
        background:#fff;border:1px dashed #e2e8f0;border-radius:12px}
 .badge-mini{font-size:11px;padding:1px 7px;border-radius:8px;font-weight:500}
 .bg-green{background:#dcfce7;color:#166534}.bg-gray{background:#f3f4f6;color:#6b7280}
+.src-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.src-item{display:flex;align-items:flex-start;gap:9px;border:1px solid #e2e8f0;border-radius:9px;
+          padding:10px 12px;cursor:pointer;background:#fafbfc;transition:border-color .15s}
+.src-item:hover{border-color:#bfdbfe}
+.src-item input{width:16px;height:16px;accent-color:#2563eb;margin-top:2px;flex-shrink:0}
+.src-item b{display:block;font-size:13px;color:#1e293b;font-weight:600}
+.src-item i{display:block;font-size:11.5px;color:#94a3b8;font-style:normal;line-height:1.5;margin-top:2px}
+@media(max-width:680px){.src-grid{grid-template-columns:1fr}}
 </style>
 
 <div class="content">
 
 <div class="rd-intro">
   <h3>🛰️ 渠道雷达能帮你做什么？</h3>
-  <p>填入同行（竞品）的官网，系统自动找到他们的「经销商 / Distributors / Where to Buy」页面，
-     用 AI 提取出经销商名单（公司 / 国家 / 电话 / 邮箱 / 网站）<b>直接入库成你的客户线索</b>——
-     这些正在卖同类产品的海外经销商，恰恰是你最想拿下的客户。同时为每个竞品生成一张「情报卡」，
-     并可纳入<b>定期监控</b>，对手上新经销商/新产品时自动提醒你。</p>
-  <div class="flow">填竞品网址 → 找经销商页 → AI 提名单 → 过滤假数据 → 入库线索 + 情报卡 → 定期监控变化</div>
+  <p>填入同行（竞品）的官网，系统用 <b>4 条数据源并行</b>挖出在卖它货的海外渠道商，
+     <b>直接入库成你的客户线索</b>——这些正在经销同类产品的商家，恰恰是你最想拿下的客户。
+     就算竞品官网只是个产品画册、不挂经销商名单，也能从全网/电商社媒/海关数据里把它的下游挖出来。
+     同时为每个竞品生成一张「情报卡」，并可纳入<b>定期监控</b>，对手有新动作时自动提醒你。</p>
+  <div class="flow">① 反向搜索经销商 ＋ ② 电商社媒 ＋ ③ 官网扫描 ＋ ④ 海关反查 → AI 提名单 → 质量闸打分 → 高匹配入库/中等转「待确认」/低分丢弃 → 情报卡 + 定期监控</div>
+  <p style="font-size:12px;color:#64748b;margin:8px 0 0">🛡️ <b>质量闸</b>：AI 给每条线索打「匹配度」，高分直接进客户库，<b>中等的标为「待确认」</b>让你核对，明显不相关的直接丢掉——保证不灌垃圾。搜索词会<b>按你的目标国家自动切换法语/西语/葡语/阿语</b>，覆盖非洲法语区、拉美、中东。</p>
 </div>
 
 {% if not has_keys %}
@@ -83,15 +92,26 @@
     <label for="rdAuto">② 让系统按我的产品关键词自动搜竞品（需配 Serper Key，会额外搜 8 家同行）</label>
   </div>
 
-  <div class="rd-opt">
-    <input type="checkbox" id="rdMonitor" checked>
-    <label for="rdMonitor">把这些竞品纳入定期监控，每</label>
-    <select id="rdFreq">
-      <option value="7" selected>每周</option>
-      <option value="1">每天</option>
-      <option value="30">每月</option>
-    </select>
-    <label for="rdFreq">自动重扫一次，有变化时提醒我</label>
+  <div style="margin-top:16px;padding-top:14px;border-top:1px dashed #e2e8f0">
+    <h3 style="font-size:13px;font-weight:700;color:#1e293b;margin:0 0 4px">③ 用哪些数据源挖？</h3>
+    <p class="hint" style="margin:0 0 10px">按重要度排好了，默认全开。后三个标 ⚡ 的需要配 Serper Key。</p>
+    <div class="src-grid">
+      <label class="src-item"><input type="checkbox" class="rd-src" value="reverse" checked>
+        <span><b>① 反向搜索经销商 ⚡</b><i>主引擎：全网搜在代理竞品品牌的经销商，不靠竞品官网</i></span></label>
+      <label class="src-item"><input type="checkbox" class="rd-src" value="social" checked>
+        <span><b>② 本地电商 + 社媒 ⚡</b><i>Facebook / Jumia / MercadoLibre / IndiaMART 上转售它的商家</i></span></label>
+      <label class="src-item"><input type="checkbox" class="rd-src" value="website" checked>
+        <span><b>③ 官网扫描</b><i>扒竞品官网的 Distributors / Where-to-Buy 页（只需 DeepSeek）</i></span></label>
+      <label class="src-item"><input type="checkbox" class="rd-src" value="customs" checked>
+        <span><b>④ 海关反查 ⚡</b><i>公开海关聚合页里进口竞品品牌的买家（数据少时可能为空）</i></span></label>
+    </div>
+    <p class="hint" id="rdEstimate" style="margin:10px 0 0"></p>
+  </div>
+
+  <div style="margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+              padding:10px 14px;font-size:12.5px;color:#15803d">
+    🔔 <b>扫描只跑一次。</b>扫完后，下方「竞品列表」里挑你<b>真正想长期盯</b>的竞品，
+    逐个打开「定期监控」开关（可单独设每天/每周/每月）——避免把搜到的一堆竞品全自动重扫、白烧额度。
   </div>
 
   <div class="rd-run">
@@ -100,14 +120,23 @@
     <div class="rd-status" id="rdStatus"></div>
   </div>
   <p class="hint" style="margin:12px 0 0">
-    💡 扫描在后台进行（每个竞品要抓页面 + AI 解析，约需 10~40 秒），完成后下方监控列表会更新。
-    经销商已入库到 <a href="/leads" style="color:#2563eb">客户列表</a>（来源标记「渠道雷达」），
+    💡 扫描在后台进行（每个竞品要跑你勾选的几条数据源 + AI 解析，开满约需 30~90 秒/家），
+    可关页面，完成后下方监控列表会更新。渠道商已入库到
+    <a href="/leads" style="color:#2563eb">客户列表</a>（来源标记「渠道雷达」，notes 里标了来自哪条源），
     需要邮箱时去客户列表点「批量找邮箱」。
   </p>
 </div>
 
 <!-- 监控列表 -->
-<div class="section-title">📡 监控中的竞品（{{ competitors|length }}）</div>
+<div class="section-title">📡 竞品列表（{{ comp_total }}）<span style="font-size:12px;font-weight:400;color:#94a3b8;margin-left:8px">— 打开「定期监控」开关，系统才会定期重扫该竞品提醒变化</span></div>
+{% if comp_total > 0 %}
+<div style="display:flex;align-items:center;gap:14px;margin:-6px 0 14px;font-size:12.5px">
+  <span style="color:#94a3b8">排序：</span>
+  <a href="?sort=" style="text-decoration:none;{{ 'color:#2563eb;font-weight:600' if not comp_sort else 'color:#64748b' }}">最近/有变化</a>
+  <a href="?sort=dist" style="text-decoration:none;{{ 'color:#2563eb;font-weight:600' if comp_sort=='dist' else 'color:#64748b' }}">经销商数 ↓</a>
+  <a onclick="cleanupOnce()" style="margin-left:auto;color:#94a3b8;cursor:pointer;text-decoration:none">🧹 清理未监控的竞品</a>
+</div>
+{% endif %}
 
 {% if competitors %}
 <div class="cmp-grid">
@@ -125,10 +154,11 @@
           {% if c.status=='active' %}● 监控中{% elif c.status=='paused' %}⏸ 已暂停{% else %}单次{% endif %}
         </span>
       </div>
-      <div class="cmp-dist">
+      <a class="cmp-dist" href="/leads?competitor={{ c.host }}"
+         title="查看这家竞品挖出的渠道商" style="text-decoration:none">
         <b>{{ c.distributor_count }}</b>
-        <span>经销商</span>
-      </div>
+        <span>经销商 ›</span>
+      </a>
     </div>
 
     <div class="cmp-intel">
@@ -159,6 +189,21 @@
   </div>
   {% endfor %}
 </div>
+{% if comp_pages > 1 %}
+<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:18px;font-size:13px">
+  {% set sq = ('&sort=' ~ comp_sort) if comp_sort else '' %}
+  {% if comp_page > 1 %}
+  <a href="?cp={{ comp_page-1 }}{{ sq }}" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;text-decoration:none">上一页</a>
+  {% endif %}
+  {% for p in range(1, comp_pages+1) %}
+  <a href="?cp={{ p }}{{ sq }}" style="padding:6px 11px;border:1px solid {{ '#2563eb' if p==comp_page else '#e2e8f0' }};
+     border-radius:6px;text-decoration:none;{{ 'background:#2563eb;color:#fff' if p==comp_page else 'color:#475569' }}">{{ p }}</a>
+  {% endfor %}
+  {% if comp_page < comp_pages %}
+  <a href="?cp={{ comp_page+1 }}{{ sq }}" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;text-decoration:none">下一页</a>
+  {% endif %}
+</div>
+{% endif %}
 {% else %}
 <div class="empty">还没有监控的竞品。在上方填入竞品网址、点「启动雷达扫描」即可开始。</div>
 {% endif %}
@@ -166,10 +211,36 @@
 </div><!-- end .content -->
 
 <script>
+// 跑前预估 Serper 搜索消耗（粗略：反向~5/电商社媒~3/海关~2 次每竞品；官网扫描不耗）
+function updateEstimate(){
+  var el = document.getElementById('rdEstimate'); if(!el) return;
+  var urls = document.getElementById('rdUrls').value.trim();
+  var n = urls ? urls.split(/[\n,;]+/).filter(function(x){return x.trim();}).length : 0;
+  if(document.getElementById('rdAuto').checked) n += 8;
+  var per = 0, costy = false;
+  document.querySelectorAll('.rd-src:checked').forEach(function(c){
+    if(c.value==='reverse'){ per+=5; costy=true; }
+    else if(c.value==='social'){ per+=3; costy=true; }
+    else if(c.value==='customs'){ per+=2; costy=true; }
+  });
+  if(!costy){ el.textContent='ℹ️ 只选了官网扫描，不消耗 Serper 额度（仅用 DeepSeek）。'; return; }
+  if(n===0){ el.textContent='ℹ️ 填竞品网址后这里会显示预计 Serper 消耗。'; return; }
+  el.textContent='ℹ️ 预计消耗 Serper 搜索约 '+(n*per)+' 次（'+n+' 家竞品 × 选中的搜索源）。';
+}
+document.addEventListener('DOMContentLoaded', function(){
+  ['rdUrls','rdAuto'].forEach(function(id){
+    var e=document.getElementById(id); if(e){ e.addEventListener('input',updateEstimate); e.addEventListener('change',updateEstimate); }
+  });
+  document.querySelectorAll('.rd-src').forEach(function(c){ c.addEventListener('change',updateEstimate); });
+  updateEstimate();
+});
 function runRadar(){
   var urls = document.getElementById('rdUrls').value.trim();
   var auto = document.getElementById('rdAuto').checked;
   if(!urls && !auto){ alert('请填竞品网址，或勾选「让系统自动搜竞品」'); return; }
+  var sources = Array.prototype.map.call(
+    document.querySelectorAll('.rd-src:checked'), function(c){ return c.value; });
+  if(sources.length === 0){ alert('请至少选一个数据源'); return; }
   var btn = document.getElementById('rdRunBtn');
   btn.disabled = true;
   document.getElementById('rdStatus').textContent = '⏳ 雷达扫描中，请勿关闭页面…';
@@ -178,8 +249,8 @@ function runRadar(){
     body: JSON.stringify({
       urls: urls,
       auto_search: auto,
-      monitor: document.getElementById('rdMonitor').checked,
-      frequency_days: parseInt(document.getElementById('rdFreq').value,10)
+      sources: sources,
+      monitor: false
     })
   }).then(function(r){return r.json();}).then(function(d){
     if(d.ok){ pollRadar(d.task_id); }
@@ -212,6 +283,13 @@ function delCmp(id){
   if(!confirm('确定删除这个竞品监控？（已入库的经销商线索不会被删）')) return;
   postJ('/radar/'+id+'/delete', {}, function(){
     var el = document.getElementById('cmp-'+id); if(el) el.remove();
+  });
+}
+function cleanupOnce(){
+  if(!confirm('清理所有“单次扫描”的竞品卡（没开定期监控的）？\n已入库的经销商线索不会被删，开了监控的竞品也会保留。')) return;
+  postJ('/radar/cleanup', {}, function(d){
+    alert('已清理 ' + (d.deleted||0) + ' 个未监控竞品');
+    location.reload();
   });
 }
 </script>

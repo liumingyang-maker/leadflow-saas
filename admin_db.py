@@ -107,6 +107,7 @@ def init():
                 name              TEXT DEFAULT '',
                 intel_json        TEXT DEFAULT '',
                 distributor_count INTEGER DEFAULT 0,
+                distributor_names TEXT DEFAULT '',
                 snapshot_hash     TEXT DEFAULT '',
                 frequency_days    INTEGER DEFAULT 7,
                 last_checked      TEXT,
@@ -123,6 +124,11 @@ def init():
         try:
             conn.execute("ALTER TABLE tenants ADD COLUMN email_verified INTEGER DEFAULT 0")
             conn.execute("UPDATE tenants SET email_verified=1")
+        except Exception:
+            pass
+        # 老库补 distributor_names 列（监控 diff 用，存上次经销商名单）
+        try:
+            conn.execute("ALTER TABLE competitors ADD COLUMN distributor_names TEXT DEFAULT ''")
         except Exception:
             pass
     _ensure_admin()
@@ -583,18 +589,21 @@ def _next_check(freq_days: int) -> str:
 def upsert_competitor(tenant_id: str, url: str, host: str, name: str = "",
                       intel: dict = None, distributor_count: int = 0,
                       snapshot_hash: str = "", frequency_days: int = 7,
-                      monitor: bool = True) -> str:
+                      monitor: bool = True, distributor_names: list = None) -> str:
     """
     新增或更新一个竞品记录（按 tenant_id+host 唯一）。
     monitor=True 表示纳入定期监控（active），否则只存一次结果（status=once）。
+    distributor_names — 本次经销商名单（每项形如 "公司名(国家)"），用来比对算「新增了谁」。
     返回 competitor id。
     """
     intel_str = _json.dumps(intel or {}, ensure_ascii=False)
+    names_now = [str(n) for n in (distributor_names or []) if n]
+    names_str = _json.dumps(names_now, ensure_ascii=False)
     status = "active" if monitor else "once"
     now = _now()
     with get_conn() as conn:
         existing = conn.execute(
-            "SELECT id, intel_json, distributor_count, snapshot_hash "
+            "SELECT id, intel_json, distributor_count, snapshot_hash, distributor_names "
             "FROM competitors WHERE tenant_id=? AND host=?",
             (tenant_id, host)
         ).fetchone()
@@ -606,23 +615,33 @@ def upsert_competitor(tenant_id: str, url: str, host: str, name: str = "",
                        existing["snapshot_hash"])
             note = ""
             if changed:
+                # 算出具体「新增了哪个经销商」
+                try:
+                    old_names = set(_json.loads(existing["distributor_names"] or "[]"))
+                except Exception:
+                    old_names = set()
+                added = [n for n in names_now if n not in old_names]
                 old_n = existing["distributor_count"] or 0
-                if distributor_count != old_n:
+                if added:
+                    head = "、".join(added[:3])
+                    more = f" 等{len(added)}家" if len(added) > 3 else ""
+                    note = f"🆕 新增经销商：{head}{more}"
+                elif distributor_count != old_n:
                     note = f"经销商数量 {old_n} → {distributor_count}"
                 else:
                     note = "官网内容有更新"
             conn.execute("""
                 UPDATE competitors SET
                     url=?, name=COALESCE(NULLIF(?,''), name),
-                    intel_json=?, distributor_count=?, snapshot_hash=?,
-                    frequency_days=?, last_checked=?, next_check_at=?,
+                    intel_json=?, distributor_count=?, distributor_names=?,
+                    snapshot_hash=?, frequency_days=?, last_checked=?, next_check_at=?,
                     change_note=CASE WHEN ? THEN ? ELSE change_note END,
                     has_change=CASE WHEN ? THEN 1 ELSE has_change END,
                     status=CASE WHEN ?='once' THEN status ELSE ? END,
                     updated_at=?
                 WHERE id=?
-            """, (url, name, intel_str, distributor_count, snapshot_hash,
-                  frequency_days, now, _next_check(frequency_days),
+            """, (url, name, intel_str, distributor_count, names_str,
+                  snapshot_hash, frequency_days, now, _next_check(frequency_days),
                   1 if changed else 0, note,
                   1 if changed else 0,
                   status, status,
@@ -632,12 +651,12 @@ def upsert_competitor(tenant_id: str, url: str, host: str, name: str = "",
         conn.execute("""
             INSERT INTO competitors
                 (id, tenant_id, url, host, name, intel_json, distributor_count,
-                 snapshot_hash, frequency_days, last_checked, next_check_at,
-                 status, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 distributor_names, snapshot_hash, frequency_days, last_checked,
+                 next_check_at, status, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (cid, tenant_id, url, host, name, intel_str, distributor_count,
-              snapshot_hash, frequency_days, now, _next_check(frequency_days),
-              status, now, now))
+              names_str, snapshot_hash, frequency_days, now,
+              _next_check(frequency_days), status, now, now))
         return cid
 
 
@@ -670,6 +689,15 @@ def delete_competitor(tenant_id: str, cid: str) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM competitors WHERE tenant_id=? AND id=?",
                      (tenant_id, cid))
+
+
+def delete_once_competitors(tenant_id: str) -> int:
+    """删掉该租户所有"单次扫描"(status=once，从没开监控)的竞品卡，返回删除数。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM competitors WHERE tenant_id=? AND status='once'",
+            (tenant_id,))
+        return cur.rowcount
 
 
 def set_competitor_monitor(tenant_id: str, cid: str, monitor: bool,
