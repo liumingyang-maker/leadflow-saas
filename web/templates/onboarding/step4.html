@@ -1,109 +1,40 @@
 {% extends "onboarding/base.html" %}
 {% block body %}
 <div class="step-title">第 4 步 / 共 5 步</div>
-<h1>填入数据采集 API Key</h1>
+<h1>搜索与 AI，已经为你配好了 ✅</h1>
 <p class="subtitle">
-  这些 Key 是系统从海关数据和搜索引擎采集真实买家数据用的。
-  <b>不填也能用</b>（用演示数据），有了 Key 才能采集真实数据。
+  你<b>不用申请任何 API Key</b>——谷歌搜索采集、AI 智能分析、客户评分、渠道雷达，
+  这些都由平台直接提供，开箱即用。会员套餐内含每月额度。
 </p>
 
 <form method="POST">
 
-  <!-- ImportYeti -->
-  <div class="form-group">
-    <label>
-      ImportYeti API Key
-      <span style="font-weight:400;color:#9ca3af;font-size:12px;margin-left:6px">
-        美国海关进口记录，最核心的数据源
-      </span>
-    </label>
-    <input type="text" name="importyeti_api_key"
-           value="{{ cfg.get('importyeti_api_key', '') }}"
-           placeholder="可留空，先用演示模式">
-    <div class="hint">
-      获取地址：<a href="https://importyeti.com" target="_blank">importyeti.com</a>
-      &nbsp;·&nbsp; 免费可查询，付费解锁完整联系方式
+  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;
+              padding:18px 20px;margin-top:8px">
+    <div style="font-size:14px;font-weight:700;color:#166534;margin-bottom:10px">平台已为你内置：</div>
+    <div style="font-size:13px;color:#15803d;line-height:2">
+      🔍 <b>谷歌搜索采集</b> —— 全网挖买家官网/联系方式<br>
+      🛰️ <b>渠道雷达</b> —— 挖竞品的海外经销商（你的目标客户）<br>
+      🧠 <b>AI 智能分析</b> —— 解析搜索结果、客户评分、写开发信<br>
+    </div>
+    <div style="font-size:12px;color:#16a34a;margin-top:10px;padding-top:10px;border-top:1px solid #bbf7d0">
+      用量随会员档位每月自动重置。额度用完可升级或下月再用——工作台「API 额度」随时可查。
     </div>
   </div>
 
-  <!-- Serper.dev（替代 SerpAPI）-->
-  <div class="form-group">
-    <label>
-      Serper.dev API Key
-      <span style="font-weight:400;color:#16a34a;font-size:12px;margin-left:6px">
-        ✅ 注册免费送 2500 次
-      </span>
-    </label>
-    <input type="text" name="serpapi_key"
-           value="{{ cfg.get('serpapi_key', '') }}"
-           placeholder="可留空">
-    <div class="hint">
-      谷歌搜索采集买家官网，比 SerpAPI 便宜 50 倍。
-      获取：<a href="https://serper.dev" target="_blank">serper.dev</a> → 注册 → 免费领 2500 次
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
+              padding:16px 20px;margin-top:14px">
+    <div style="font-size:13px;font-weight:600;color:#475569;margin-bottom:6px">
+      🔌 进阶数据源（可选，之后在「系统设置」里加）
     </div>
-  </div>
-
-  <!-- DeepSeek -->
-  <div class="form-group">
-    <label>
-      DeepSeek API Key
-      <span style="font-weight:400;color:#16a34a;font-size:12px;margin-left:6px">
-        ✅ 注册免费送余额
-      </span>
-    </label>
-    <input type="text" name="deepseek_api_key"
-           value="{{ cfg.get('deepseek_api_key', '') }}"
-           placeholder="可留空">
-    <div class="hint">
-      AI 智能分析搜索结果 + 客户评分 + 自动写开发信。
-      获取：<a href="https://platform.deepseek.com" target="_blank">platform.deepseek.com</a> → 注册 → API Keys
+    <div style="font-size:12.5px;color:#94a3b8;line-height:1.7">
+      海关进口记录（ImportYeti）、Apollo 联系人、TikTok（Apify）等高级数据源，
+      需要你自己的账号 Key。<b>现在无需理会</b>——等你用熟了、确实需要时，去设置页填即可。
     </div>
-  </div>
-
-  <!-- Apollo.io -->
-  <div class="form-group">
-    <label>
-      Apollo.io API Key
-      <span style="font-weight:400;color:#16a34a;font-size:12px;margin-left:6px">
-        ✅ 注册免费送50条/月
-      </span>
-    </label>
-    <input type="text" name="apollo_api_key"
-           value="{{ cfg.get('apollo_api_key', '') }}"
-           placeholder="可留空">
-    <div class="hint">
-      全球2.7亿联系人，直接找到采购负责人邮箱。
-      获取：<a href="https://app.apollo.io/#/sign-up" target="_blank">app.apollo.io</a>
-      → 注册 → Settings → Integrations → API → Connect
-    </div>
-  </div>
-
-  <!-- Hunter.io -->
-  <div class="form-group">
-    <label>
-      Hunter.io API Key
-      <span style="font-weight:400;color:#9ca3af;font-size:12px;margin-left:6px">
-        找买家联系邮箱，免费 25 次/月
-      </span>
-    </label>
-    <input type="text" name="hunter_api_key"
-           value="{{ cfg.get('hunter_api_key', '') }}"
-           placeholder="可留空">
-    <div class="hint">
-      输入买家网址自动找到联系人邮箱。
-      获取：<a href="https://hunter.io" target="_blank">hunter.io</a> → 注册免费使用
-    </div>
-  </div>
-
-  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;
-              padding:14px;margin-top:8px;font-size:13px;color:#166534">
-    💡 建议先申请 <b>Serper.dev</b>（免费2500次）和 <b>DeepSeek</b>（注册送余额），
-    两个加一起就能完整跑采集+AI分析，ImportYeti 和 Hunter 后续再补。
   </div>
 
   <div class="actions" style="margin-top:24px">
     <button class="btn-next" type="submit">下一步 →</button>
-    <button class="btn-skip" type="submit" formaction="/onboarding/5">暂时跳过</button>
   </div>
 </form>
 {% endblock %}

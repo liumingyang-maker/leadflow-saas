@@ -160,7 +160,7 @@
   <div class="card-title">📊 API 额度</div>
   <div id="quotaBody" style="font-size:12.5px;color:var(--muted)">加载中…</div>
   <p style="font-size:11px;color:var(--faint);margin-top:8px;line-height:1.5">
-    DeepSeek/Hunter 为接口实时余额；Serper 无公开余额接口，显示<b>本系统本月用量</b>（<a href="/settings">填套餐额度</a>后可估剩余）。
+    谷歌搜索与 AI 由<b>平台提供</b>，按会员档每月自动重置。想用自己的账号可去<a href="/settings">系统设置</a>填 key（不占平台额度）。
   </p>
 </div>
 <script>
@@ -174,16 +174,24 @@
   function dim(t){ return '<span style="color:#94a3b8;font-weight:400">'+t+'</span>'; }
   fetch('/api/quota').then(function(r){return r.json();}).then(function(d){
     var html = '';
-    var ds = d.deepseek||{};
-    html += row('⚡ DeepSeek', ds.ok ? ('¥'+(ds.balance!=null?ds.balance:'—')) : dim(ds.reason||'—'));
-    var hu = d.hunter||{};
-    html += row('🔎 Hunter', hu.ok ? ((hu.remaining!=null?hu.remaining:'—')+' 次剩余') : dim(hu.reason||'—'));
+    // Serper：平台代付（本月用量/上限）或 BYOK（自有 key）
     var sp = d.serper||{};
-    var spv;
-    if(!sp.keys){ spv = dim('未配置'); }
-    else if(sp.limit){ spv = sp.used+' / '+sp.limit+(sp.remaining!=null?'（剩 '+sp.remaining+'）':''); }
-    else { spv = sp.used+' 次'+dim('（本月已用）'); }
-    html += row('🛰️ Serper'+(sp.keys?(' ×'+sp.keys):''), spv);
+    if(sp.source==='platform'){
+      var v = sp.used+' / '+sp.limit+'（剩 '+sp.remaining+'）';
+      html += row('🛰️ 谷歌搜索 '+dim('['+(sp.tier||'')+']'), v);
+    } else {
+      html += row('🛰️ 谷歌搜索', dim('自有 key ×'+(sp.keys||0)+'（不限）'));
+    }
+    // DeepSeek：平台提供 或 BYOK 真实余额
+    var ds = d.deepseek||{};
+    if(ds.source==='byok'){
+      html += row('⚡ DeepSeek', ds.ok ? ('¥'+(ds.balance!=null?ds.balance:'—')+dim('（自有）')) : dim(ds.reason||'—'));
+    } else {
+      html += row('⚡ DeepSeek AI', dim('平台提供'));
+    }
+    // Hunter：仅 BYOK
+    var hu = d.hunter||{};
+    html += row('🔎 Hunter', hu.ok ? ((hu.remaining!=null?hu.remaining:'—')+' 次剩余') : dim(hu.reason||'未配置'));
     box.innerHTML = html;
   }).catch(function(){ box.textContent = '额度查询暂不可用'; });
 })();

@@ -261,13 +261,14 @@ renderI18n(ppI18nData);
   <div id="aiBox" style="{{ '' if cfg.ai_enabled else 'display:none' }}">
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px 20px;margin-bottom:14px">
       <div style="font-weight:600;margin-bottom:4px">⚡ DeepSeek API Key
-        <span style="font-size:11px;font-weight:400;color:#9ca3af;margin-left:6px">日常主力 · 约¥2-5/月</span>
+        <span style="font-size:11px;font-weight:400;color:#16a34a;margin-left:6px">留空 = 用平台额度（推荐）</span>
       </div>
       <div style="font-size:12px;color:#6b7280;margin-bottom:10px">
-        负责：开发信生成 · 客户评分 · 翻译 · 搜索解析
+        负责：开发信生成 · 客户评分 · 翻译 · 搜索解析。<b>默认平台已提供，无需填。</b>
+        只有想用自己账号（不占平台额度）时才填。
       </div>
       <input type="text" name="deepseek_api_key" value="{{ cfg.deepseek_api_key or '' }}"
-             placeholder="sk-xxxxxxxx"
+             placeholder="留空即用平台额度；要用自己的填 sk-xxxxxxxx"
              style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace">
     </div>
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px 20px;margin-bottom:14px">
@@ -470,7 +471,10 @@ renderI18n(ppI18nData);
   <!-- 采集 API -->
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:14px">
     <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">🔍 数据采集 API</h3>
-    <p style="font-size:12px;color:#6b7280;margin-bottom:16px">不填用演示数据，填了才能采集真实买家</p>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:16px">
+      <b>Serper（谷歌搜索）默认平台已提供</b>，留空即用。下面这些是<b>进阶数据源</b>（海关/Apollo/TikTok），
+      属高级可选——要用自己的账号才填，普通使用无需理会。
+    </p>
     {% for fname,label,hint in [
       ('importyeti_api_key','ImportYeti API Key','海关进口数据，$99/月'),
       ('hunter_api_key','Hunter.io API Key','邮箱查找，免费50次/月'),
@@ -490,22 +494,15 @@ renderI18n(ppI18nData);
     <!-- Serper（Google 搜索）：支持多 key 自动容错 + 额度统计 -->
     <div style="border-top:1px dashed #e2e8f0;padding-top:14px;margin-top:4px">
       <label style="font-size:13px;font-weight:500;display:block;margin-bottom:4px">
-        Serper API Key（Google 搜索采集 · 渠道雷达主力）
-        <span style="font-weight:400;color:#9ca3af;font-size:12px">serper.dev，$50/月或免费额度</span>
+        Serper API Key（Google 搜索 · 渠道雷达主力）
+        <span style="font-weight:400;color:#16a34a;font-size:12px">留空 = 用平台额度（推荐）</span>
       </label>
-      <textarea name="serpapi_key" rows="3" placeholder="可填多个 key，每行一个 —— 一个额度用尽自动切换下一个"
+      <textarea name="serpapi_key" rows="2" placeholder="留空即用平台额度；想用自己的账号（不占平台额度）才填，可多个，每行一个"
                 style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box">{{ cfg.get('serpapi_key','') }}</textarea>
       <p style="font-size:12px;color:#6b7280;margin:6px 0 0;line-height:1.6">
-        💡 <b>多 key 容错</b>：填多个（每行一个），系统调用时一个报额度用尽/失效会<b>自动切到下一个</b>，扫描不中断。
-        <span style="color:#9ca3af">（你怎么拿到这些 key 由你决定；本系统只负责"填了几个就轮着用"。）</span>
+        💡 默认<b>平台已提供谷歌搜索额度</b>（按会员档每月重置，工作台「API 额度」可查），普通使用无需填这里。
+        只有想用<b>自己的 Serper 账号</b>时才填——填了就走你的 key、不占平台额度，多个会自动容错轮换。
       </p>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
-        <label style="font-size:13px;color:#374151;white-space:nowrap">每个 key 每月额度</label>
-        <input type="text" name="serper_quota" value="{{ cfg.get('serper_quota','') or '' }}"
-               placeholder="如 2500（选填，用于工作台估算剩余）"
-               style="width:220px;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-        <span style="font-size:12px;color:#9ca3af">填了才能在工作台显示"已用 / 剩余"</span>
-      </div>
     </div>
   </div>
 

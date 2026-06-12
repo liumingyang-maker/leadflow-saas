@@ -159,7 +159,11 @@ def admin_required(f):
 
 
 def current_cfg():
-    return tenant_ctx.load_config(session.get("tenant_id", ""))
+    """运行用配置：注入平台代付的 DeepSeek/Serper 主 key（客户没填自己的时）。
+    采集/雷达/AI 都经它拿 key → 零配置即用。注意：注入的是副本、不回存；
+    设置页/额度查询要用 tenant_ctx.load_config(raw) 而非这个，避免把平台 key 写进 config.json。"""
+    from api_platform import runtime_cfg
+    return runtime_cfg(session.get("tenant_id", ""))
 
 
 def current_tid():
@@ -1003,6 +1007,12 @@ def run_step(step):
     def run_bg():
         logs      = []
         countries = cfg.get("target_countries", [])[:20]
+        # 平台 Serper 额度闸：超额则本次不跑需要 Serper 的渠道（google/google_maps）
+        from api_platform import serper_keys_for
+        _sk, _splat, _sblocked, _sreason = serper_keys_for(tid, cfg)
+        if _sblocked:
+            cfg["serpapi_key"] = ""        # 让 google/maps 等渠道优雅跳过 Serper
+            logs.append("⚠️ " + _sreason)
         try:
             from module2_cleaner import DataCleaner
 
@@ -1309,10 +1319,13 @@ def radar_run():
             from module1_collectors.competitor_radar import CompetitorRadar
             from module2_cleaner import DataCleaner
 
-            from api_quota import parse_keys
+            from api_platform import serper_keys_for, record_serper
+            s_keys, s_platform, s_blocked, s_reason = serper_keys_for(tid, cfg)
+            if s_blocked:
+                logs.append("⚠️ " + s_reason + "（本次只跑官网扫描）")
             radar_eng = CompetitorRadar()
             radar_eng.deepseek_key    = cfg.get("deepseek_api_key", "")
-            radar_eng.serper_keys     = parse_keys(cfg.get("serpapi_key", ""))  # 多 key 自动容错
+            radar_eng.serper_keys     = s_keys        # 平台代付（限额）或 BYOK（不限），超额则为空
             radar_eng.hunter_key      = cfg.get("hunter_api_key", "")
             radar_eng.product_name    = cfg.get("product_name", "")
             radar_eng.search_keywords = cfg.get("search_keywords", [])
@@ -1328,8 +1341,8 @@ def radar_run():
 
             out = radar_eng.run(urls=urls, auto_search=auto_search,
                                 want_intel=True, max_competitors=8)
-            # 记录 Serper 本月用量（成功调用数 = 消耗的额度），给工作台「API 额度」卡用
-            admin_db.add_api_usage(tid, "serper", out.get("serper_calls", 0))
+            # 平台代付时记录 Serper 本月用量（BYOK 不计入平台额度）
+            record_serper(tid, cfg, out.get("serper_calls", 0))
 
             # 三个搜索源（反向/电商社媒/海关反查）都靠 Serper，没配就只剩官网扫描
             search_srcs = [s for s in sources if s in ("reverse", "social", "customs")]
@@ -1431,27 +1444,34 @@ def radar_delete(cid):
 @app.route("/api/quota")
 @onboarding_required
 def api_quota_view():
-    """各 API 服务的额度/余额（工作台「API 额度」卡 AJAX 拉取）。
-    DeepSeek/Hunter 查真实余额；Serper 无公开余额接口 → 本系统本月用量 vs 客户填的套餐上限。"""
+    """各 API 服务额度（工作台「API 额度」卡 AJAX 拉取）。
+    Serper/DeepSeek 默认平台代付（显示本月用量 / 会员档上限）；客户填了自己 key 则显示 BYOK。
+    Hunter 仅 BYOK，查真实余额。用 raw config 判断到底是平台还是 BYOK。"""
     tid = current_tid()
-    cfg = current_cfg()
+    cfg = tenant_ctx.load_config(tid)                  # raw：区分平台/BYOK
     from api_quota import deepseek_balance, hunter_account, parse_keys
-    ds = parse_keys(cfg.get("deepseek_api_key", ""))
+    from api_platform import quota_status
+    qs = quota_status(tid, cfg)
+    out = {}
+    # Serper：平台代付（用量/上限）或 BYOK
+    sp = qs["serper"]
+    if sp["source"] == "platform":
+        out["serper"] = {"source": "platform", "tier": sp["tier"],
+                         "used": sp["used"], "limit": sp["limit"],
+                         "remaining": sp["remaining"]}
+    else:
+        out["serper"] = {"source": "byok", "keys": sp["keys"]}
+    # DeepSeek：BYOK 查真实余额，平台代付显示"平台提供"
+    if qs["deepseek"]["source"] == "byok":
+        ds = parse_keys(cfg.get("deepseek_api_key", ""))
+        bal = deepseek_balance(ds[0]) if ds else {"ok": False, "reason": "未配置"}
+        bal["source"] = "byok"
+        out["deepseek"] = bal
+    else:
+        out["deepseek"] = {"source": "platform"}
+    # Hunter：仅 BYOK
     hu = parse_keys(cfg.get("hunter_api_key", ""))
-    sk = parse_keys(cfg.get("serpapi_key", ""))
-    out = {
-        "deepseek": deepseek_balance(ds[0]) if ds else {"ok": False, "reason": "未配置"},
-        "hunter":   hunter_account(hu[0]) if hu else {"ok": False, "reason": "未配置"},
-    }
-    used = admin_db.get_api_usage(tid, "serper")
-    per  = int(cfg.get("serper_quota") or 0)        # 客户填的"每个 key 每月额度"
-    limit = per * len(sk) if (per and sk) else 0     # 多 key 总额度
-    out["serper"] = {
-        "ok": bool(sk), "kind": "local", "keys": len(sk),
-        "used": used, "limit": limit,
-        "remaining": (limit - used) if limit else None,
-        "reason": None if sk else "未配置",
-    }
+    out["hunter"] = hunter_account(hu[0]) if hu else {"ok": False, "reason": "未配置"}
     return jsonify(out)
 
 
@@ -1484,7 +1504,9 @@ def product_profile_generate():
 @onboarding_required
 def settings():
     tid   = current_tid()
-    cfg   = current_cfg()
+    # 用 raw config（不注入平台 key）：设置页显示客户自己填的真实状态，
+    # 保存时也不会把平台主 key 误写进 config.json。
+    cfg   = tenant_ctx.load_config(tid)
     saved = False
     if request.method == "POST":
         # ── 第二批：公司/产品/目标市场（原本只能在入驻向导填，现可随时改）──
@@ -2129,7 +2151,8 @@ def process_due_competitors() -> int:
     for c in due:
         tid = c["tenant_id"]
         try:
-            cfg = tenant_ctx.load_config(tid)
+            from api_platform import runtime_cfg, serper_keys_for, record_serper
+            cfg = runtime_cfg(tid)        # 注入平台代付主 key（客户没填自己的时）
             if not cfg.get("deepseek_api_key"):
                 # 没 Key 没法重扫，推后一周避免反复空转
                 admin_db.upsert_competitor(
@@ -2138,10 +2161,17 @@ def process_due_competitors() -> int:
                     snapshot_hash=c.get("snapshot_hash", ""),
                     frequency_days=c.get("frequency_days", 7), monitor=True)
                 continue
-            from api_quota import parse_keys
+            s_keys, _, s_blocked, _ = serper_keys_for(tid, cfg)
+            if s_blocked:        # 平台额度用完，本月不重扫，推后避免空转
+                admin_db.upsert_competitor(
+                    tid, c["url"], c["host"], c.get("name", ""),
+                    intel={}, distributor_count=c.get("distributor_count", 0),
+                    snapshot_hash=c.get("snapshot_hash", ""),
+                    frequency_days=c.get("frequency_days", 7), monitor=True)
+                continue
             eng = CompetitorRadar()
             eng.deepseek_key = cfg.get("deepseek_api_key", "")
-            eng.serper_keys  = parse_keys(cfg.get("serpapi_key", ""))
+            eng.serper_keys  = s_keys
             eng.product_name = cfg.get("product_name", "")
             eng.target_countries = cfg.get("target_countries", [])
             eng.proxy        = cfg.get("radar_proxy", "")
@@ -2150,7 +2180,7 @@ def process_due_competitors() -> int:
             eng.product_i18n = _prof.get("keywords_i18n") or {}
             out = eng.run(urls=[c["url"]], auto_search=False,
                           want_intel=True, max_competitors=1)
-            admin_db.add_api_usage(tid, "serper", out.get("serper_calls", 0))
+            record_serper(tid, cfg, out.get("serper_calls", 0))
             dist = out.get("distributors", [])
             if dist:
                 DataCleaner().run(dist, source="competitor_radar",

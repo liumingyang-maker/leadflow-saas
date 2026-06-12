@@ -34,3 +34,10 @@ SMTP_FROM_NAME = os.environ.get("SMTP_FROM_NAME", "LeadFlow")
 
 # 部署后改成真实域名（去掉结尾斜杠）。本地默认 127.0.0.1
 SITE_URL = os.environ.get("SITE_URL", "http://127.0.0.1:5001").rstrip("/")
+
+# ── 平台代付主 Key（DeepSeek + Serper）──────────────────────────────
+# 客户零配置即用：没填自己 key 时，采集/AI 用平台这把主 key（按会员档限额）。
+# 填了自己的 key（BYOK）则用客户自己的、不限额。贵的海关/Apollo 仍走 BYOK。
+# SERPER_MASTER_KEYS 可填多个，逗号分隔（自动容错轮换）。不填则不启用平台代付。
+DEEPSEEK_MASTER_KEY = os.environ.get("DEEPSEEK_MASTER_KEY", "")
+SERPER_MASTER_KEYS  = os.environ.get("SERPER_MASTER_KEYS", "")
