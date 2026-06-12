@@ -25,13 +25,16 @@ except Exception:                                  # pragma: no cover
     from core.api_quota import parse_keys
 
 
-# 各会员档位每月额度（平台代付时生效；BYOK 不受此限）。Serper 是成本大头，只限它。
+# 各会员档位每月额度（平台代付时生效；BYOK 不受此限）。
+# serper —— 已 enforce（serper_keys_for 调用前卡额度）。
+# deepseek —— 暂【仅作政策记录，尚未 enforce】（按方案 B，DeepSeek 便宜+大头被 Serper 闸间接限，
+#   以后做"中央 DeepSeek 计数器"时直接读这里的数字硬卡。单位=AI 调用次/月）。
 PLAN_QUOTA = {
-    "free":      {"serper": 100},
-    "trial":     {"serper": 300},
-    "pro":       {"serper": 2500},
-    "ultra":     {"serper": 10000},
-    "suspended": {"serper": 0},
+    "free":      {"serper": 100,   "deepseek": 300},
+    "trial":     {"serper": 300,   "deepseek": 800},
+    "pro":       {"serper": 2500,  "deepseek": 6000},
+    "ultra":     {"serper": 10000, "deepseek": 25000},
+    "suspended": {"serper": 0,     "deepseek": 0},
 }
 
 
