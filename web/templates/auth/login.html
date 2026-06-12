@@ -3,65 +3,103 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>登录 — LeadFlow</title>
+<title>登录 — 外贸雷达</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-     background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);
-     min-height:100vh;display:flex;align-items:center;justify-content:center}
-.card{background:#fff;border-radius:12px;padding:40px;width:100%;max-width:400px;
-      box-shadow:0 20px 60px rgba(0,0,0,.3)}
-.logo{text-align:center;margin-bottom:28px}
-.logo .brand{font-size:28px;font-weight:800;color:#2563eb;letter-spacing:-1px}
-.logo .sub{font-size:13px;color:#6b7280;margin-top:4px}
-h2{font-size:18px;font-weight:600;margin-bottom:20px;color:#111827}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+     min-height:100vh;display:flex;background:#fff;color:#0f172a}
+a{text-decoration:none}
+
+/* 左：品牌 + 卖点 + 价格 */
+.left{flex:1.1;background:linear-gradient(150deg,#1e3a8a 0%,#1e293b 60%,#0f172a 100%);
+      color:#fff;padding:48px 52px;display:flex;flex-direction:column;justify-content:center}
+.left .brand{font-size:24px;font-weight:800;display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.left .slogan{font-size:30px;font-weight:800;line-height:1.25;letter-spacing:-.5px;margin:22px 0 10px}
+.left .slogan .hl{color:#60a5fa}
+.left .desc{font-size:14px;color:#cbd5e1;max-width:420px;margin-bottom:26px}
+.feat{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:#e2e8f0;margin-bottom:12px}
+.feat .ic{color:#60a5fa;font-weight:700}
+.plans{margin-top:30px;display:flex;gap:10px;flex-wrap:wrap}
+.plan{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;
+      padding:12px 16px;min-width:120px}
+.plan.hot{border-color:#3b82f6;background:rgba(59,130,246,.15)}
+.plan .pn{font-size:13px;color:#cbd5e1}
+.plan .pp{font-size:20px;font-weight:800;margin-top:2px}
+.plan .pp small{font-size:11px;color:#94a3b8;font-weight:400}
+.plans-link{margin-top:16px;font-size:13px;color:#93c5fd}
+
+/* 右：登录表单 */
+.right{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 24px;background:#f8fafc}
+.card{background:#fff;border-radius:14px;padding:40px;width:100%;max-width:400px;
+      box-shadow:0 10px 40px rgba(15,23,42,.08);border:1px solid #eef2f7}
+.card h2{font-size:21px;font-weight:700;margin-bottom:4px}
+.card .sub{font-size:13px;color:#6b7280;margin-bottom:24px}
 label{font-size:13px;font-weight:500;color:#374151;display:block;margin-bottom:5px}
-input{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:7px;
-      font-size:14px;outline:none;transition:.2s;margin-bottom:14px}
+input[type=email],input[type=password]{width:100%;padding:11px 12px;border:1px solid #d1d5db;
+      border-radius:8px;font-size:14px;outline:none;transition:.2s;margin-bottom:14px}
 input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
-.btn{width:100%;padding:11px;background:#2563eb;color:#fff;border:none;
-     border-radius:7px;font-size:15px;font-weight:500;cursor:pointer;transition:.2s}
+.btn{width:100%;padding:12px;background:#2563eb;color:#fff;border:none;border-radius:8px;
+     font-size:15px;font-weight:600;cursor:pointer;transition:.2s}
 .btn:hover{background:#1d4ed8}
-.error{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;
-       border-radius:6px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+.error{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:8px;
+       padding:10px 14px;font-size:13px;margin-bottom:16px}
+.okmsg{background:#f0fdf4;color:#16a34a;border:1px solid #86efac;border-radius:8px;
+       padding:10px 14px;font-size:13px;margin-bottom:16px}
 .footer{text-align:center;margin-top:20px;font-size:13px;color:#6b7280}
-.footer a{color:#2563eb}
+.footer a{color:#2563eb;font-weight:500}
+@media(max-width:820px){
+  body{flex-direction:column}
+  .left{padding:40px 28px}
+  .left .slogan{font-size:24px}
+  .plans{display:none}
+}
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="logo">
-    <div class="brand">LeadFlow</div>
-    <div class="sub">外贸客户智能获取系统</div>
+<div class="left">
+  <a href="/" class="brand" style="color:#fff">🛰️ 外贸雷达</a>
+  <div class="slogan">用 AI 雷达，<br>挖出<span class="hl">竞品的海外经销商</span></div>
+  <div class="desc">反查竞品分销网络、自动找邮箱、验证真实性、群发开发信——专为非洲 / 东南亚 / 拉美 / 中东外贸出口设计。</div>
+  <div class="feat"><span class="ic">✓</span><span>渠道雷达四源并行，挖出真实经销商线索</span></div>
+  <div class="feat"><span class="ic">✓</span><span>一键找邮箱 + 真伪验证，社交线索批量补全</span></div>
+  <div class="feat"><span class="ic">✓</span><span>双通道群发开发信 + 自动跟进到成交</span></div>
+  <div class="plans">
+    <div class="plan"><div class="pn">免费版</div><div class="pp">¥0 <small>永久</small></div></div>
+    <div class="plan hot"><div class="pn">专业版</div><div class="pp">¥99 <small>/月 早鸟</small></div></div>
+    <div class="plan"><div class="pn">旗舰版</div><div class="pp">¥199 <small>/月</small></div></div>
   </div>
-  <h2>登录账号</h2>
-  {% if request.args.get('reset') %}
-  <div style="background:#f0fdf4;color:#16a34a;border:1px solid #86efac;
-              border-radius:6px;padding:10px 14px;font-size:13px;margin-bottom:16px">
-    ✅ 密码已重置成功，请用新密码登录
-  </div>
-  {% endif %}
-  {% if error %}<div class="error">{{ error }}</div>{% endif %}
-  <form method="POST">
-    <label>邮箱</label>
-    <input type="email" id="loginEmail" name="email" value="{{ email or '' }}"
-           placeholder="your@email.com" required autofocus>
-    <label>密码</label>
-    <input type="password" name="password" placeholder="请输入密码" required>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:-8px;margin-bottom:12px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;font-weight:400;margin:0;cursor:pointer">
-        <input type="checkbox" id="rememberEmail" style="width:auto;margin:0"> 记住账号
+  <a href="/#pricing" class="plans-link">查看各套餐功能区别 →</a>
+</div>
+
+<div class="right">
+  <div class="card">
+    <h2>欢迎回来 👋</h2>
+    <div class="sub">登录你的外贸雷达账号</div>
+    {% if request.args.get('reset') %}
+    <div class="okmsg">✅ 密码已重置成功，请用新密码登录</div>
+    {% endif %}
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="POST">
+      <label>邮箱</label>
+      <input type="email" id="loginEmail" name="email" value="{{ email or '' }}"
+             placeholder="your@email.com" required autofocus>
+      <label>密码</label>
+      <input type="password" name="password" placeholder="请输入密码" required>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:-4px 0 14px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;font-weight:400;margin:0;cursor:pointer">
+          <input type="checkbox" id="rememberEmail" style="width:auto;margin:0"> 记住账号
+        </label>
+        <a href="/forgot-password" style="font-size:12px;color:#6b7280">忘记密码？</a>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;font-weight:400;margin-bottom:16px;cursor:pointer">
+        <input type="checkbox" name="remember_login" id="rememberLogin" style="width:auto;margin:0" checked>
+        60 天内免密登录（公用电脑请勿勾选）
       </label>
-      <a href="/forgot-password" style="font-size:12px;color:#6b7280">忘记密码？</a>
+      <button class="btn" type="submit">登录</button>
+    </form>
+    <div class="footer">
+      还没有账号？<a href="/register">免费试用 14 天</a>
     </div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;font-weight:400;margin-bottom:16px;cursor:pointer">
-      <input type="checkbox" name="remember_login" id="rememberLogin" style="width:auto;margin:0" checked>
-      60 天内免密登录（公用电脑请勿勾选）
-    </label>
-    <button class="btn" type="submit">登录</button>
-  </form>
-  <div class="footer">
-    还没有账号？<a href="/register">免费试用 14 天</a>
   </div>
 </div>
 <script>
@@ -69,15 +107,10 @@ input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
   var emailInput = document.getElementById('loginEmail');
   var remEmail   = document.getElementById('rememberEmail');
   var KEY = 'lf_remember_email';
-  // 加载时：之前记住过账号就自动填邮箱并勾上"记住账号"
   try {
     var saved = localStorage.getItem(KEY);
-    if (saved) {
-      if (!emailInput.value) emailInput.value = saved;
-      remEmail.checked = true;
-    }
+    if (saved) { if (!emailInput.value) emailInput.value = saved; remEmail.checked = true; }
   } catch(e){}
-  // 提交时：勾了就存邮箱，没勾就清掉
   var form = emailInput.closest('form');
   if (form) form.addEventListener('submit', function(){
     try {

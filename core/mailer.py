@@ -72,7 +72,7 @@ def smtp_diagnose(to_email: str) -> dict:
     }
     try:
         _smtp_send(to_email,
-                   "【获客雷达】测试邮件",
+                   "【外贸雷达】测试邮件",
                    "<p>这是一封测试邮件。能收到说明发信通道已打通 ✅</p>")
         logger.info(f"[mailer] 测试发信成功 → {to_email}")
         return {"ok": True, "detail": "发送成功，请去收件箱（含垃圾箱）查收", **info}
@@ -88,11 +88,11 @@ def send_verification_email(to_email: str, token: str) -> bool:
     <div style="font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;
                 background:#f8fafc;border-radius:12px;padding:40px">
       <div style="text-align:center;margin-bottom:28px">
-        <span style="font-size:26px;font-weight:800;color:#2563eb">LeadFlow</span>
+        <span style="font-size:26px;font-weight:800;color:#2563eb">外贸雷达</span>
       </div>
       <h2 style="color:#111827;font-size:18px;margin-bottom:12px">验证您的邮箱</h2>
       <p style="color:#374151;line-height:1.6;margin-bottom:24px">
-        感谢注册 LeadFlow！请点击下方按钮验证邮箱，完成后即可开始 14 天免费试用。
+        感谢注册 外贸雷达！请点击下方按钮验证邮箱，完成后即可开始 14 天免费试用。
       </p>
       <div style="text-align:center;margin-bottom:24px">
         <a href="{url}" style="display:inline-block;padding:13px 32px;
@@ -106,7 +106,7 @@ def send_verification_email(to_email: str, token: str) -> bool:
       </p>
     </div>
     """
-    return send_email(to_email, "【LeadFlow】请验证您的邮箱地址", html)
+    return send_email(to_email, "【外贸雷达】请验证您的邮箱地址", html)
 
 
 def send_reset_email(to_email: str, token: str) -> bool:
@@ -115,7 +115,7 @@ def send_reset_email(to_email: str, token: str) -> bool:
     <div style="font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;
                 background:#f8fafc;border-radius:12px;padding:40px">
       <div style="text-align:center;margin-bottom:28px">
-        <span style="font-size:26px;font-weight:800;color:#2563eb">LeadFlow</span>
+        <span style="font-size:26px;font-weight:800;color:#2563eb">外贸雷达</span>
       </div>
       <h2 style="color:#111827;font-size:18px;margin-bottom:12px">重置您的密码</h2>
       <p style="color:#374151;line-height:1.6;margin-bottom:24px">
@@ -133,4 +133,4 @@ def send_reset_email(to_email: str, token: str) -> bool:
       </p>
     </div>
     """
-    return send_email(to_email, "【LeadFlow】密码重置请求", html)
+    return send_email(to_email, "【外贸雷达】密码重置请求", html)

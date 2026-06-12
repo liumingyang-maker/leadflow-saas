@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>外贸雷达 — AI 外贸智能获客 · 挖出竞品的海外经销商</title>
+<meta name="description" content="外贸雷达用 AI 渠道雷达，反查竞品的海外经销商、自动找邮箱、验证真实性、群发开发信。专为非洲/东南亚/拉美/中东外贸出口设计。免费试用。">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--brand:#2563eb;--brand-d:#1d4ed8;--ink:#0f172a;--ink2:#334155;--mut:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+     color:var(--ink);line-height:1.6;background:#fff;-webkit-font-smoothing:antialiased}
+a{text-decoration:none;color:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+
+/* nav */
+.nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.9);backdrop-filter:blur(8px);
+     border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;height:62px;gap:16px}
+.brand{font-size:20px;font-weight:800;color:var(--brand);letter-spacing:-.5px;display:flex;align-items:center;gap:7px}
+.brand .dot{font-size:18px}
+.nav .sp{flex:1}
+.nav a.ghost{font-size:14px;color:var(--ink2);padding:8px 14px;border-radius:8px}
+.nav a.ghost:hover{background:var(--bg)}
+.nav a.cta{font-size:14px;font-weight:600;color:#fff;background:var(--brand);padding:9px 18px;border-radius:8px}
+.nav a.cta:hover{background:var(--brand-d)}
+
+/* hero */
+.hero{background:linear-gradient(180deg,#eef4ff 0%,#fff 100%);padding:72px 0 64px;text-align:center}
+.hero .tag{display:inline-block;background:#dbeafe;color:var(--brand-d);font-size:13px;font-weight:600;
+           padding:6px 16px;border-radius:20px;margin-bottom:22px}
+.hero h1{font-size:46px;line-height:1.18;font-weight:800;letter-spacing:-1px;margin-bottom:20px}
+.hero h1 .hl{color:var(--brand)}
+.hero p.sub{font-size:18px;color:var(--mut);max-width:680px;margin:0 auto 32px}
+.btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.btn-lg{font-size:16px;font-weight:600;padding:14px 30px;border-radius:10px;display:inline-block;transition:.15s}
+.btn-primary{background:var(--brand);color:#fff}
+.btn-primary:hover{background:var(--brand-d);transform:translateY(-1px)}
+.btn-line{background:#fff;color:var(--ink2);border:1px solid var(--line)}
+.btn-line:hover{border-color:var(--brand);color:var(--brand)}
+.hero .trust{margin-top:20px;font-size:13px;color:var(--mut)}
+
+/* section */
+.sec{padding:72px 0}
+.sec.alt{background:var(--bg)}
+.sec h2{font-size:32px;font-weight:800;text-align:center;letter-spacing:-.5px;margin-bottom:10px}
+.sec .lead{font-size:16px;color:var(--mut);text-align:center;max-width:620px;margin:0 auto 44px}
+
+/* feature grid */
+.fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.fcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px 24px;transition:.15s}
+.fcard:hover{box-shadow:0 8px 28px rgba(37,99,235,.08);border-color:#c7d7fe;transform:translateY(-2px)}
+.fcard .ic{font-size:26px;margin-bottom:12px}
+.fcard h3{font-size:17px;font-weight:700;margin-bottom:7px}
+.fcard p{font-size:14px;color:var(--mut)}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.stp{text-align:center;padding:0 8px}
+.stp .n{width:42px;height:42px;border-radius:50%;background:var(--brand);color:#fff;font-weight:700;
+        display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:17px}
+.stp h4{font-size:15px;font-weight:700;margin-bottom:5px}
+.stp p{font-size:13px;color:var(--mut)}
+
+/* pricing */
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;align-items:start}
+.pcard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px 26px;position:relative}
+.pcard.hot{border:2px solid var(--brand);box-shadow:0 16px 44px rgba(37,99,235,.14)}
+.pcard .pop{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--brand);
+            color:#fff;font-size:12px;font-weight:700;padding:5px 16px;border-radius:20px;white-space:nowrap}
+.pcard .pname{font-size:18px;font-weight:800}
+.pcard .ptag{font-size:13px;color:var(--mut);margin:3px 0 16px}
+.pcard .price{font-size:38px;font-weight:800;letter-spacing:-1px}
+.pcard .period{font-size:13px;color:var(--mut);margin:2px 0 20px;min-height:18px}
+.pcard ul{list-style:none;margin-bottom:22px}
+.pcard li{font-size:13.5px;color:var(--ink2);padding:7px 0;display:flex;gap:9px;align-items:flex-start;border-bottom:1px dashed #eef2f7}
+.pcard li:last-child{border-bottom:none}
+.pcard li .ck{color:#16a34a;font-weight:700;flex-shrink:0}
+.pcard li.ex{color:#94a3b8}
+.pcard li.ex .ck{color:#cbd5e1}
+.pbtn{display:block;text-align:center;font-size:15px;font-weight:600;padding:12px;border-radius:9px;transition:.15s}
+.pbtn.fill{background:var(--brand);color:#fff}
+.pbtn.fill:hover{background:var(--brand-d)}
+.pbtn.out{background:#fff;color:var(--brand);border:1px solid var(--brand)}
+.pbtn.out:hover{background:#eff4ff}
+.pricing-note{text-align:center;font-size:13px;color:var(--mut);margin-top:26px}
+
+/* bottom cta */
+.cta-band{background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;text-align:center;padding:64px 0}
+.cta-band h2{font-size:30px;font-weight:800;margin-bottom:12px;color:#fff}
+.cta-band p{color:#cbd5e1;font-size:16px;margin-bottom:28px}
+
+/* footer */
+.foot{border-top:1px solid var(--line);padding:30px 0;font-size:13px;color:var(--mut)}
+.foot .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+@media(max-width:860px){
+  .hero h1{font-size:33px}
+  .hero p.sub{font-size:16px}
+  .fgrid,.steps,.pgrid{grid-template-columns:1fr}
+  .sec{padding:52px 0}
+  .pcard.hot{transform:none}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a href="/" class="brand"><span class="dot">🛰️</span>外贸雷达</a>
+  <div class="sp"></div>
+  <a href="/login" class="ghost">登录</a>
+  <a href="/register" class="cta">免费注册</a>
+</div></nav>
+
+<!-- HERO -->
+<header class="hero"><div class="wrap">
+  <div class="tag">🛰️ AI 渠道雷达 · 外贸智能获客</div>
+  <h1>用 AI 雷达，<br>挖出<span class="hl">竞品的海外经销商</span></h1>
+  <p class="sub">竞争对手在非洲、东南亚、拉美卖货的当地经销商，正是你的目标客户。
+     外贸雷达自动反查它们、找出邮箱、验证真实性，再帮你群发开发信——从找客户到成交，一条龙。</p>
+  <div class="btns">
+    <a href="/register" class="btn-lg btn-primary">免费开始，14 天试用 →</a>
+    <a href="#pricing" class="btn-lg btn-line">查看价格</a>
+  </div>
+  <div class="trust">无需信用卡 · DeepSeek + Serper 平台已配好，注册即用 · 专为外贸出口设计</div>
+</div></header>
+
+<!-- FEATURES -->
+<section class="sec"><div class="wrap">
+  <h2>一套系统，跑通获客全链路</h2>
+  <p class="lead">不止找客户，更帮你把客户找准、验真、触达到成交。</p>
+  <div class="fgrid">
+    <div class="fcard"><div class="ic">🛰️</div><h3>渠道雷达「四源并行」</h3>
+      <p>填竞品官网，反向搜索 + 电商社媒 + 官网扫描 + 海关反查，四路并发挖出它的海外经销商，质量闸 + 国家闸过滤水货。</p></div>
+    <div class="fcard"><div class="ic">📧</div><h3>一键找邮箱</h3>
+      <p>官网爬取 + 全网挖掘 + Hunter 补充，自动找出最佳联系邮箱并验证真伪，社交线索也能批量补全。</p></div>
+    <div class="fcard"><div class="ic">🔎</div><h3>真实性验证 + 深度调查</h3>
+      <p>域名年龄、SSL、网站存活一键验真，0~100 可信度评分；高价值客户还能聚合做 OSINT 深度调查。</p></div>
+    <div class="fcard"><div class="ic">✉️</div><h3>双通道群发 + 自动跟进</h3>
+      <p>SMTP / 专业 ESP 双通道发开发信，自动占位符 + 签名，发信前验证邮箱，到点自动跟进序列。</p></div>
+    <div class="fcard"><div class="ic">🌐</div><h3>多渠道采集 + 独立站询盘</h3>
+      <p>海关数据、Google、地图商家、阿里 RFQ、YouTube/TikTok 社媒……还能把你独立站的询盘表单接进客户库。</p></div>
+    <div class="fcard"><div class="ic">🤖</div><h3>AI 产品画像 · 搜得准</h3>
+      <p>大白话描述产品，AI 自动生成结构化多语言搜索词库，专打非洲法语区、拉美西语区、中东阿语区本地市场。</p></div>
+  </div>
+</div></section>
+
+<!-- HOW IT WORKS -->
+<section class="sec alt"><div class="wrap">
+  <h2>四步开跑</h2>
+  <p class="lead">注册后几分钟就能挖到第一批真实经销商线索。</p>
+  <div class="steps">
+    <div class="stp"><div class="n">1</div><h4>描述你的产品</h4><p>大白话说说你卖什么、卖给谁，AI 自动生成搜索词。</p></div>
+    <div class="stp"><div class="n">2</div><h4>选目标市场</h4><p>勾选目标大洲/国家，系统据此本地化精准搜索。</p></div>
+    <div class="stp"><div class="n">3</div><h4>开雷达扫竞品</h4><p>填几个同行官网，四源并行挖出它们的海外经销商。</p></div>
+    <div class="stp"><div class="n">4</div><h4>找邮箱·发开发信</h4><p>一键补邮箱、验真伪，双通道群发，自动跟进到成交。</p></div>
+  </div>
+</div></section>
+
+<!-- PRICING -->
+<section class="sec" id="pricing"><div class="wrap">
+  <h2>简单透明的价格</h2>
+  <p class="lead">免费版永久可用，专业版主打外贸团队。早鸟价限时，年付立省 2 个月。</p>
+  <div class="pgrid">
+    {% for p in plans %}
+    <div class="pcard {{ 'hot' if p.highlight else '' }}">
+      {% if p.highlight %}<div class="pop">⭐ 最受欢迎</div>{% endif %}
+      <div class="pname">{{ p.name }}</div>
+      <div class="ptag">{{ p.tagline }}</div>
+      <div class="price">{{ p.price }}</div>
+      <div class="period">{{ p.period }}</div>
+      <ul>
+        {% for f in p.features %}
+        <li><span class="ck">✓</span><span>{{ f }}</span></li>
+        {% endfor %}
+        {% for e in p.excludes %}
+        <li class="ex"><span class="ck">✗</span><span>{{ e }}</span></li>
+        {% endfor %}
+      </ul>
+      <a href="/register" class="pbtn {{ 'fill' if p.highlight else 'out' }}">{{ p.cta }}</a>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="pricing-note">💡 付款后由客服为你开通对应套餐；DeepSeek 与 Serper 的搜索/AI 额度由平台代付，零配置即用。</p>
+</div></section>
+
+<!-- BOTTOM CTA -->
+<section class="cta-band"><div class="wrap">
+  <h2>今天就挖出第一批海外经销商</h2>
+  <p>免费注册，14 天试用专业版全部功能，无需信用卡。</p>
+  <a href="/register" class="btn-lg btn-primary">免费开始 →</a>
+</div></section>
+
+<footer class="foot"><div class="wrap">
+  <div><b style="color:var(--brand)">🛰️ 外贸雷达</b> · AI 外贸智能获客系统</div>
+  <div>已有账号？<a href="/login" style="color:var(--brand)">登录</a></div>
+</div></footer>
+
+</body>
+</html>

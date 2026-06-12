@@ -27,5 +27,5 @@ from waitress import serve
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    print(f"LeadFlow (waitress) 启动于 0.0.0.0:{port}", flush=True)
+    print(f"外贸雷达 (waitress) 启动于 0.0.0.0:{port}", flush=True)
     serve(app, host="0.0.0.0", port=port, threads=8)

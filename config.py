@@ -30,7 +30,7 @@ SMTP_HOST      = os.environ.get("SMTP_HOST", "smtp.qq.com")
 SMTP_PORT      = int(os.environ.get("SMTP_PORT", "465"))
 SMTP_USER      = os.environ.get("SMTP_USER", "")
 SMTP_PASS      = os.environ.get("SMTP_PASS", "")
-SMTP_FROM_NAME = os.environ.get("SMTP_FROM_NAME", "LeadFlow")
+SMTP_FROM_NAME = os.environ.get("SMTP_FROM_NAME", "外贸雷达")
 
 # 部署后改成真实域名（去掉结尾斜杠）。本地默认 127.0.0.1
 SITE_URL = os.environ.get("SITE_URL", "http://127.0.0.1:5001").rstrip("/")

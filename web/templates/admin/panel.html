@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>管理后台 — LeadFlow</title>
+<title>管理后台 — 外贸雷达</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -57,7 +57,7 @@ tr:hover td{background:#243349}
 </head>
 <body>
 <div class="topbar">
-  <div class="brand">LeadFlow</div>
+  <div class="brand">外贸雷达</div>
   <div class="title">管理员后台</div>
   <a href="/admin/pipeline" class="logout" style="margin-left:auto;color:#60a5fa;border-color:#1e3a5f">🔬 技术架构</a>
   <a href="/admin/logout" class="logout" style="margin-left:0">退出</a>
@@ -161,6 +161,7 @@ tr:hover td{background:#243349}
           <th>公司</th>
           <th>行业</th>
           <th>状态</th>
+          <th>套餐</th>
           <th>注册时间</th>
           <th>最后登录</th>
           <th>试用到期</th>
@@ -182,6 +183,18 @@ tr:hover td{background:#243349}
             {% else %}
             <span class="badge badge-suspended">已停</span>
             {% endif %}
+          </td>
+          <td>
+            {% set cur = (t.plan or 'basic')|lower %}
+            <form method="POST" action="/admin/tenant/{{ t.id }}/plan" style="margin:0">
+              <select name="plan" class="inp" style="min-width:130px;padding:5px 8px;font-size:12px"
+                      onchange="this.form.submit()">
+                <option value="basic" {{ 'selected' if cur in ('basic','') else '' }}>按状态（={{ tiers[t.id] }}）</option>
+                <option value="free"  {{ 'selected' if cur=='free'  else '' }}>免费版 Free</option>
+                <option value="pro"   {{ 'selected' if cur=='pro'   else '' }}>专业版 Pro</option>
+                <option value="ultra" {{ 'selected' if cur=='ultra' else '' }}>旗舰版 Ultra</option>
+              </select>
+            </form>
           </td>
           <td style="color:#64748b;font-size:12px">{{ t.created_at[:10] if t.created_at else '—' }}</td>
           <td style="color:#64748b;font-size:12px">{{ t.last_login[:10] if t.last_login else '从未' }}</td>
@@ -223,7 +236,7 @@ tr:hover td{background:#243349}
           </td>
         </tr>
         <tr id="edit-{{ t.id }}" style="display:none">
-          <td colspan="9" class="addbox">
+          <td colspan="10" class="addbox">
             <form method="POST" action="/admin/tenant/{{ t.id }}/edit">
               <div class="fld"><label>邮箱</label><input class="inp" name="email" type="email" value="{{ t.email }}"></div>
               <div class="fld"><label>公司名</label><input class="inp" name="company_name" value="{{ t.company_name or '' }}"></div>
@@ -234,7 +247,7 @@ tr:hover td{background:#243349}
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="9" style="text-align:center;color:#475569;padding:40px">
+        <tr><td colspan="10" style="text-align:center;color:#475569;padding:40px">
           还没有注册用户
         </td></tr>
         {% endfor %}

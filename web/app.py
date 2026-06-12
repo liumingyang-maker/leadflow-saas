@@ -149,6 +149,16 @@ def onboarding_required(f):
     return decorated
 
 
+def login_required(f):
+    """只要求已登录（不要求入驻完成）。用于入驻途中也能调的接口，如产品画像 AI 生成。"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "tenant_id" not in session:
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -168,6 +178,96 @@ def current_cfg():
 
 def current_tid():
     return session.get("tenant_id", "")
+
+
+def _apply_product_profile(cfg: dict, profile_json: str) -> None:
+    """解析前端「产品搜索画像」JSON → 存 cfg['product_profile'] + 派生 search_keywords / HS。
+    设置页和入驻向导 step1 共用。profile_json 为空或无 keywords_en 时不动 cfg。"""
+    try:
+        prof = json.loads(profile_json or "{}")
+    except Exception:
+        prof = {}
+    if not (isinstance(prof, dict) and prof.get("keywords_en")):
+        return
+
+    def _plist(key, n):
+        v = prof.get(key) or []
+        return [str(x).strip() for x in v if str(x).strip()][:n]
+
+    clean_i18n = {}
+    i18n = prof.get("keywords_i18n") or {}
+    if isinstance(i18n, dict):
+        for lg, terms in i18n.items():
+            terms = [str(x).strip() for x in (terms or []) if str(x).strip()][:6]
+            if terms:
+                clean_i18n[lg] = terms
+    cfg["product_profile"] = {
+        "category":     str(prof.get("category", "")).strip()[:120],
+        "keywords_en":  _plist("keywords_en", 12),
+        "synonyms":     _plist("synonyms", 12),
+        "models":       _plist("models", 10),
+        "applications": _plist("applications", 8),
+        "buyer_types":  _plist("buyer_types", 6),
+        "hs_suggested": _plist("hs_suggested", 8),
+        "keywords_i18n": clean_i18n,
+    }
+    # 派生 search_keywords：英文词 + 同义词 + 型号 → 所有采集器零改动受益
+    derived = []
+    for grp in ("keywords_en", "synonyms", "models"):
+        for w in cfg["product_profile"][grp]:
+            if w not in derived:
+                derived.append(w)
+    if derived:
+        cfg["search_keywords"] = derived[:30]
+    # HS 没手填则用 AI 建议的兜底
+    if not cfg.get("hs_codes") and cfg["product_profile"]["hs_suggested"]:
+        cfg["hs_codes"] = cfg["product_profile"]["hs_suggested"][:20]
+
+
+# ─────────────────────────────────────────────────────────
+# 套餐定价（落地页 / 登录页 / 注册页共用，单一事实来源）
+# 与 core/api_platform.PLAN_QUOTA 的额度数字保持一致。
+# ─────────────────────────────────────────────────────────
+PRICING_PLANS = [
+    {
+        "id": "free", "name": "免费版", "price": "¥0", "period": "永久免费",
+        "tagline": "先体验，零成本上手", "highlight": False, "cta": "免费注册",
+        "features": [
+            "渠道雷达：每月 1 个竞品 · 仅看前 5 条线索",
+            "基础采集渠道 + 客户管理 + 数据统计",
+            "平台 AI 额度：Serper 100 次 / 月",
+        ],
+        "excludes": ["群发开发信", "批量找邮箱", "数据导出"],
+    },
+    {
+        "id": "pro", "name": "专业版", "price": "¥99", "period": "/月 · 早鸟价（原价 ¥299）",
+        "tagline": "外贸团队主力配置", "highlight": True, "cta": "开始 14 天免费试用",
+        "features": [
+            "渠道雷达「四源并行」+ 质量闸（不限竞品数）",
+            "全部采集渠道：海关 · Google · 地图 · 阿里 RFQ · 社媒",
+            "一键找邮箱 · 批量找邮箱 · 邮箱真伪验证",
+            "双通道群发开发信 + 自动跟进序列",
+            "独立站询盘插件 · WhatsApp 触达",
+            "数据导出 CSV",
+            "零配置：DeepSeek + Serper 平台已为你配好",
+            "平台额度：Serper 2500 次/月 · DeepSeek 6000 次/月",
+        ],
+        "excludes": [],
+    },
+    {
+        "id": "ultra", "name": "旗舰版", "price": "¥199", "period": "/月 · 早鸟价",
+        "tagline": "深度数据 + 团队协作", "highlight": False, "cta": "联系客服开通",
+        "features": [
+            "专业版全部功能",
+            "更高平台额度：Serper 10000 次 / 月",
+            "海关深度数据 ImportYeti / Apollo（自带 Key）",
+            "🔜 即将推出：CRM 商机管道",
+            "🔜 即将推出：团队子账号 · 防撞单",
+            "🔜 即将推出：AI 定制开发信",
+        ],
+        "excludes": [],
+    },
+]
 
 
 def _wa_api_ready(cfg: dict) -> bool:
@@ -214,7 +314,7 @@ def inject_account():
 def index():
     if "tenant_id" in session:
         return redirect(url_for("workbench"))
-    return redirect(url_for("login"))
+    return render_template("landing.html", plans=PRICING_PLANS)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -248,7 +348,8 @@ def login():
                     return redirect(url_for("workbench"))
             else:
                 error = result["error"]
-    return render_template("auth/login.html", error=error, email=email)
+    return render_template("auth/login.html", error=error, email=email,
+                           plans=PRICING_PLANS)
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -276,7 +377,7 @@ def register():
                 return redirect(url_for("verify_pending", email=email))
             else:
                 error = result["error"]
-    return render_template("auth/register.html", error=error)
+    return render_template("auth/register.html", error=error, plans=PRICING_PLANS)
 
 
 @app.route("/logout")
@@ -374,6 +475,8 @@ def onboarding_step(step):
             cfg["industry"]     = request.form.get("industry", "")
             cfg["product_name"] = request.form.get("product_name", "").strip()[:100]
             cfg["product_desc"] = request.form.get("product_desc", "").strip()[:500]
+            # 产品搜索画像（AI 起草 + 客户确认）：首次入驻就把搜索词描述准
+            _apply_product_profile(cfg, request.form.get("product_profile_json", ""))
             session["company_name"] = cfg["company_name"]
             admin_db.update_tenant(tid, company_name=cfg["company_name"],
                                    industry=cfg["industry"])
@@ -1435,7 +1538,7 @@ def api_quota_view():
 # ─────────────────────────────────────────────────────────
 
 @app.route("/product-profile/generate", methods=["POST"])
-@onboarding_required
+@login_required
 def product_profile_generate():
     """AI 起草「产品搜索画像」：客户描述/产品页 → DeepSeek 结构化搜索词草稿。"""
     cfg  = current_cfg()
@@ -1473,45 +1576,9 @@ def settings():
             hs_raw = request.form.get("hs_codes", "")
             cfg["hs_codes"] = [h.strip() for h in
                                hs_raw.replace("，", ",").split(",") if h.strip()][:20]
-            # 搜索关键词改由「产品搜索画像」派生（见下）；没画像时保留原有 search_keywords 不动
-            # 产品搜索画像（AI 起草 + 客户确认，结构化搜索词库）
-            try:
-                prof = json.loads(request.form.get("product_profile_json", "") or "{}")
-            except Exception:
-                prof = {}
-            if isinstance(prof, dict) and prof.get("keywords_en"):
-                # 规整存储
-                def _plist(key, n):
-                    v = prof.get(key) or []
-                    return [str(x).strip() for x in v if str(x).strip()][:n]
-                i18n = prof.get("keywords_i18n") or {}
-                clean_i18n = {}
-                if isinstance(i18n, dict):
-                    for lg, terms in i18n.items():
-                        terms = [str(x).strip() for x in (terms or []) if str(x).strip()][:6]
-                        if terms:
-                            clean_i18n[lg] = terms
-                cfg["product_profile"] = {
-                    "category":     str(prof.get("category", "")).strip()[:120],
-                    "keywords_en":  _plist("keywords_en", 12),
-                    "synonyms":     _plist("synonyms", 12),
-                    "models":       _plist("models", 10),
-                    "applications": _plist("applications", 8),
-                    "buyer_types":  _plist("buyer_types", 6),
-                    "hs_suggested": _plist("hs_suggested", 8),
-                    "keywords_i18n": clean_i18n,
-                }
-                # 派生 search_keywords：英文词+同义词+型号 → 所有采集器零改动受益
-                derived = []
-                for grp in ("keywords_en", "synonyms", "models"):
-                    for w in cfg["product_profile"][grp]:
-                        if w not in derived:
-                            derived.append(w)
-                if derived:
-                    cfg["search_keywords"] = derived[:30]
-                # HS 没手填则用 AI 建议的兜底
-                if not cfg["hs_codes"] and cfg["product_profile"]["hs_suggested"]:
-                    cfg["hs_codes"] = cfg["product_profile"]["hs_suggested"][:20]
+            # 搜索关键词改由「产品搜索画像」派生；没画像时保留原有 search_keywords 不动。
+            # 产品搜索画像（AI 起草 + 客户确认，结构化搜索词库）—— 与入驻 step1 共用逻辑
+            _apply_product_profile(cfg, request.form.get("product_profile_json", ""))
             try:
                 selected_regions   = json.loads(request.form.get("selected_regions", "[]"))
                 excluded_countries = json.loads(request.form.get("excluded_countries", "[]"))
@@ -1832,10 +1899,14 @@ def admin_logout():
 @app.route("/admin")
 @admin_required
 def admin_panel():
+    from api_platform import tenant_tier
     serper = admin_db.platform_api_usage("serper")          # 本月全平台 Serper 用量
     serper["cost"] = round(serper["total"] * 0.007, 2)       # 估算花费（≈¥0.007/次）
+    tenants = admin_db.all_tenants()
+    # 每个租户的「有效档位」（plan 明确就用它，否则按 status 推：active→pro / trial / suspended）
+    tiers = {t["id"]: tenant_tier(t["id"]) for t in tenants}
     return render_template("admin/panel.html",
-                           tenants=admin_db.all_tenants(), serper=serper)
+                           tenants=tenants, serper=serper, tiers=tiers)
 
 
 @app.route("/admin/mail-test", methods=["POST"])
@@ -1878,6 +1949,21 @@ def admin_suspend(tid):
 @admin_required
 def admin_set_trial(tid):
     admin_db.update_tenant(tid, status="trial")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/tenant/<tid>/plan", methods=["POST"])
+@admin_required
+def admin_set_plan(tid):
+    """设置租户会员档位 free/pro/ultra（决定平台额度）。
+    选「basic」= 清除明确档位、回到按 status 推断（active→pro / trial / suspended）。"""
+    plan = (request.form.get("plan", "") or "").strip().lower()
+    if plan not in ("free", "pro", "ultra", "basic"):
+        plan = "basic"
+    admin_db.update_tenant(tid, plan=plan)
+    label = {"free": "免费版", "pro": "专业版", "ultra": "旗舰版",
+             "basic": "按状态自动"}[plan]
+    flash(f"✅ 套餐已设为「{label}」")
     return redirect(url_for("admin_panel"))
 
 

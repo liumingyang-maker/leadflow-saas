@@ -2,9 +2,10 @@
 {% block body %}
 <div class="step-title">第 1 步 / 共 5 步</div>
 <h1>你们公司是做什么的？</h1>
-<p class="subtitle">填完这步，系统会自动匹配适合你行业的采集策略和 AI 提示词。</p>
+<p class="subtitle">填完这步，系统会自动匹配适合你行业的采集策略，并用 AI 把你的搜索词描述准——搜得准不准，全看这一步。</p>
 
-<form method="POST">
+<form method="POST" id="step1Form">
+  <input type="hidden" name="product_profile_json" id="ppJson">
   <div class="form-group">
     <label>公司名称</label>
     <input type="text" name="company_name" value="{{ cfg.company_name }}"
@@ -29,14 +30,137 @@
   </div>
 
   <div class="form-group">
-    <label>产品简介（可选）</label>
-    <textarea name="product_desc" rows="3"
-              placeholder="例如：专业生产 100cc-250cc 汽油摩托车发动机，OEM/ODM，MOQ 50台，10年出口经验"
+    <label>产品简介（用大白话描述，下方 AI 据此生成搜索词）</label>
+    <textarea name="product_desc" id="ppDesc" rows="3"
+              placeholder="例如：我们出口风冷单缸汽油摩托车发动机，CG/CB 系列 100cc-250cc，主要供应非洲和东南亚的摩托车组装厂和配件批发商。OEM/ODM，MOQ 50台。"
               style="resize:vertical">{{ cfg.product_desc }}</textarea>
+  </div>
+
+  {% set pp = cfg.get('product_profile', {}) %}
+  {% set pp_kw = pp.get('keywords_en') or cfg.get('search_keywords', []) %}
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:18px">
+    <div style="font-size:14px;font-weight:600;color:#1e293b">🔍 产品搜索画像
+      <span style="font-weight:400;color:#9ca3af;font-size:12px">（采集和渠道雷达的搜索词都来自这里）</span>
+    </div>
+    <div style="font-size:12px;color:#94a3b8;margin-top:3px">
+      在上面「产品简介」描述好产品（或贴一个产品页网址），点下面按钮让 AI 生成；也可手填。
+      <b style="color:#7c3aed">这一份就是搜索的唯一依据。</b>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <input type="text" id="ppUrl" placeholder="（可选）你的产品页网址 https://…"
+             style="flex:1;min-width:200px">
+      <button type="button" id="ppGenBtn" onclick="genProfile()"
+              style="padding:9px 18px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap">🪄 AI 生成搜索词</button>
+    </div>
+    <div id="ppGenStatus" style="font-size:12px;color:#7c3aed;margin-top:8px;min-height:16px"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+      <div>
+        <label style="font-size:12px;font-weight:500">产品类目</label>
+        <input type="text" id="ppCategory" value="{{ pp.get('category','') }}">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:500">目标买家类型 <span style="color:#9ca3af;font-weight:400">（逗号分隔）</span></label>
+        <input type="text" id="ppBuyerTypes" value="{{ pp.get('buyer_types',[])|join(', ') }}"
+               placeholder="distributor, wholesaler, importer">
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <label style="font-size:12px;font-weight:500">核心英文关键词 <span style="color:#9ca3af;font-weight:400">（每行一个，最关键，搜索就靠它）</span></label>
+      <textarea id="ppKeywords" rows="3"
+                placeholder="motorcycle engine&#10;single cylinder gasoline engine&#10;152F engine"
+                style="resize:vertical">{% for k in pp_kw %}{{ k }}
+{% endfor %}</textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+      <div>
+        <label style="font-size:12px;font-weight:500">同义词/别称 <span style="color:#9ca3af;font-weight:400">（每行一个）</span></label>
+        <textarea id="ppSynonyms" rows="2" style="resize:vertical">{% for k in pp.get('synonyms',[]) %}{{ k }}
+{% endfor %}</textarea>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:500">型号/规格 <span style="color:#9ca3af;font-weight:400">（逗号分隔）</span></label>
+        <input type="text" id="ppModels" value="{{ pp.get('models',[])|join(', ') }}" style="margin-bottom:10px">
+        <label style="font-size:12px;font-weight:500">典型应用 <span style="color:#9ca3af;font-weight:400">（逗号分隔）</span></label>
+        <input type="text" id="ppApplications" value="{{ pp.get('applications',[])|join(', ') }}">
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <label style="font-size:12px;font-weight:500">🌍 多语言关键词 <span style="color:#9ca3af;font-weight:400">（选好目标市场后，渠道雷达本地化搜索用）</span></label>
+      <div id="ppI18nBox"></div>
+    </div>
+    <p style="font-size:12px;color:#94a3b8;margin-top:10px">💡 可以先随手填，第 2 步还能继续调整。</p>
   </div>
 
   <div class="actions">
     <button class="btn-next" type="submit">下一步 →</button>
   </div>
 </form>
+
+<script>
+var PP_LANG_NAME = {fr:'法语 French', es:'西班牙语 Spanish', pt:'葡萄牙语 Portuguese', ar:'阿拉伯语 Arabic'};
+var ppI18nData = {{ pp.get('keywords_i18n', {})|tojson }};
+
+function _lines(v){ return (v||'').split(/[\n,，]/).map(function(s){return s.trim();}).filter(Boolean); }
+function _commas(v){ return (v||'').split(/[,，\n]/).map(function(s){return s.trim();}).filter(Boolean); }
+
+function renderI18n(obj){
+  var box = document.getElementById('ppI18nBox');
+  var langs = Object.keys(obj||{});
+  if(langs.length===0){ box.innerHTML='<div style="font-size:12px;color:#cbd5e1">（生成后或选好目标市场后显示，覆盖语言取决于你选的目标国家。）</div>'; return; }
+  var html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+  langs.forEach(function(lg){
+    var val=(obj[lg]||[]).join(', ');
+    html+='<div><label style="font-size:11.5px;color:#64748b;display:block;margin-bottom:3px">'+
+          (PP_LANG_NAME[lg]||lg)+'</label>'+
+          '<input type="text" class="ppI18n" data-lang="'+lg+'" value="'+val.replace(/"/g,'&quot;')+'"></div>';
+  });
+  html+='</div>';
+  box.innerHTML=html;
+}
+
+function genProfile(){
+  var desc=document.getElementById('ppDesc').value.trim();
+  var url=document.getElementById('ppUrl').value.trim();
+  if(!desc && !url){ alert('请先在「产品简介」里描述产品，或贴一个产品页网址'); return; }
+  var btn=document.getElementById('ppGenBtn'), st=document.getElementById('ppGenStatus');
+  btn.disabled=true; st.textContent='⏳ AI 正在分析你的产品、生成搜索词…';
+  fetch('/product-profile/generate',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({description:desc, url:url})
+  }).then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;
+    if(!d.ok){ st.textContent='❌ '+(d.error||'生成失败'); return; }
+    var p=d.profile||{};
+    document.getElementById('ppCategory').value=p.category||'';
+    document.getElementById('ppKeywords').value=(p.keywords_en||[]).join('\n');
+    document.getElementById('ppSynonyms').value=(p.synonyms||[]).join('\n');
+    document.getElementById('ppModels').value=(p.models||[]).join(', ');
+    document.getElementById('ppApplications').value=(p.applications||[]).join(', ');
+    document.getElementById('ppBuyerTypes').value=(p.buyer_types||[]).join(', ');
+    renderI18n(p.keywords_i18n||{});
+    st.textContent='✅ 已生成，检查/微调后点「下一步」即保存。';
+  }).catch(function(){ btn.disabled=false; st.textContent='❌ 网络错误，请重试'; });
+}
+
+document.getElementById('step1Form').addEventListener('submit', function(){
+  var i18n={};
+  document.querySelectorAll('.ppI18n').forEach(function(el){
+    var t=_commas(el.value); if(t.length) i18n[el.getAttribute('data-lang')]=t;
+  });
+  var prof={
+    category: document.getElementById('ppCategory').value.trim(),
+    keywords_en: _lines(document.getElementById('ppKeywords').value),
+    synonyms: _lines(document.getElementById('ppSynonyms').value),
+    models: _commas(document.getElementById('ppModels').value),
+    applications: _commas(document.getElementById('ppApplications').value),
+    buyer_types: _commas(document.getElementById('ppBuyerTypes').value),
+    hs_suggested: [],
+    keywords_i18n: i18n
+  };
+  document.getElementById('ppJson').value = prof.keywords_en.length ? JSON.stringify(prof) : '';
+});
+
+renderI18n(ppI18nData);
+</script>
 {% endblock %}

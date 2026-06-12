@@ -1,5 +1,5 @@
 """
-run.py — LeadFlow SaaS 启动入口
+run.py — 外贸雷达 SaaS 启动入口
 """
 import sys
 import os
@@ -29,6 +29,6 @@ from web.app import app
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
-    logging.info(f"LeadFlow SaaS 启动: http://127.0.0.1:{port}")
+    logging.info(f"外贸雷达 SaaS 启动: http://127.0.0.1:{port}")
     logging.info(f"管理后台: http://127.0.0.1:{port}/admin")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)

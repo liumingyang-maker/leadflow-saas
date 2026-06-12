@@ -124,7 +124,7 @@ function sendTest(btn){
   fetch("{{ endpoint }}", {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({name:'Test Buyer', email:'testbuyer@example-importer.com',
       company:'Test Importer Co', country:'Nigeria', phone:'+234800000000',
-      message:'This is a test inquiry from LeadFlow inbound widget.'})
+      message:'This is a test inquiry from 外贸雷达 inbound widget.'})
   }).then(r=>r.json()).then(d=>{
     if(d.ok){ res.style.color='#166534'; res.textContent='✅ 测试询盘已入库，去「客户列表」查看（公司名 Test Importer Co）'; }
     else { res.style.color='#991b1b'; res.textContent='❌ '+(d.error||'失败'); }
