@@ -6,6 +6,8 @@ import smtplib
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
+from email.utils import formataddr
 import sys
 from pathlib import Path
 
@@ -26,8 +28,9 @@ def _smtp_send(to_email: str, subject: str, html_body: str) -> None:
     if not config.SMTP_USER or not config.SMTP_PASS:
         raise RuntimeError("SMTP_USER / SMTP_PASS 未配置（检查服务器 .env）")
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"{config.SMTP_FROM_NAME} <{config.SMTP_USER}>"
+    # 中文发件人名/主题做 RFC2047 编码，各邮箱客户端都不乱码（ASCII 名保持原样）
+    msg["Subject"] = Header(subject, "utf-8")
+    msg["From"] = formataddr((str(Header(config.SMTP_FROM_NAME, "utf-8")), config.SMTP_USER))
     msg["To"] = to_email
     msg.attach(MIMEText(html_body, "html", "utf-8"))
     context = ssl.create_default_context()
