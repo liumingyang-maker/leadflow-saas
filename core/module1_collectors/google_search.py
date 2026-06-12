@@ -117,7 +117,10 @@ class SerperDeepSeekCollector:
                 headers={"Authorization": f"Bearer {self.deepseek_key}",
                          "Content-Type": "application/json"},
                 json={
-                    "model": "deepseek-chat",
+                    # deepseek-chat 将于 2026-07-24 弃用 → 迁到 deepseek-v4-flash。
+                    # 关思考模式：批量解析要快+省（flash 默认开思考会多花 reasoning token）。
+                    "model": "deepseek-v4-flash",
+                    "thinking": {"type": "disabled"},
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1,
                     "max_tokens": 800,

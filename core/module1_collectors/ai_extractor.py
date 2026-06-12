@@ -193,7 +193,11 @@ class AIExtractor:
                 headers={"Authorization": f"Bearer {self.deepseek_key}",
                          "Content-Type": "application/json"},
                 json={
-                    "model": "deepseek-chat",
+                    # deepseek-chat 将于 2026-07-24 弃用 → 迁到 deepseek-v4-flash。
+                    # flash 默认开"思考模式"会多花 reasoning token、变慢；批量提取关掉它，
+                    # 行为/成本与原 deepseek-chat 一致（已实测）。
+                    "model": "deepseek-v4-flash",
+                    "thinking": {"type": "disabled"},
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1,
                     "max_tokens": max_tokens,
