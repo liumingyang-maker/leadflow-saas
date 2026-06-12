@@ -1832,7 +1832,10 @@ def admin_logout():
 @app.route("/admin")
 @admin_required
 def admin_panel():
-    return render_template("admin/panel.html", tenants=admin_db.all_tenants())
+    serper = admin_db.platform_api_usage("serper")          # 本月全平台 Serper 用量
+    serper["cost"] = round(serper["total"] * 0.007, 2)       # 估算花费（≈¥0.007/次）
+    return render_template("admin/panel.html",
+                           tenants=admin_db.all_tenants(), serper=serper)
 
 
 @app.route("/admin/mail-test", methods=["POST"])

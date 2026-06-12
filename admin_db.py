@@ -613,6 +613,23 @@ def get_api_usage(tenant_id: str, provider: str) -> int:
     return (row["used"] if row else 0) or 0
 
 
+def platform_api_usage(provider: str, period: str = None) -> dict:
+    """全平台某服务【本月】总用量 + 按租户排名（管理后台监控付费号支出用）。
+    返回 {total, by_tenant:[{tenant_id, email, company, used}], period}。"""
+    period = period or _usage_period()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT u.tenant_id, u.used, t.email, t.company_name "
+            "FROM api_usage u LEFT JOIN tenants t ON t.id = u.tenant_id "
+            "WHERE u.provider=? AND u.period=? ORDER BY u.used DESC",
+            (provider, period)).fetchall()
+    by_tenant = [{"tenant_id": r["tenant_id"], "email": r["email"] or "",
+                  "company": r["company_name"] or "", "used": r["used"] or 0}
+                 for r in rows]
+    return {"total": sum(x["used"] for x in by_tenant),
+            "by_tenant": by_tenant, "period": period}
+
+
 # ── 渠道雷达：竞品监控 ─────────────────────────────────────
 
 import json as _json

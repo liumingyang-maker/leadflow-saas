@@ -84,6 +84,36 @@ tr:hover td{background:#243349}
     <div class="stat"><div class="num" style="color:#f87171">{{ suspended }}</div><div class="lbl">已暂停</div></div>
   </div>
 
+  <!-- 平台 Serper 用量（监控付费号支出）-->
+  {% if serper %}
+  <div class="card" style="margin-bottom:28px">
+    <div class="card-header"><h2>🛰️ 平台 Serper 用量 · {{ serper.period }}</h2>
+      <span style="font-size:12px;color:#64748b">付费号无余额接口；这里看本月消耗，余额请查 serper.dev 后台</span>
+    </div>
+    <div style="padding:16px 20px">
+      <div style="display:flex;gap:32px;align-items:baseline;flex-wrap:wrap">
+        <div><span style="font-size:28px;font-weight:700;color:#fff">{{ serper.total }}</span>
+          <span style="font-size:12px;color:#64748b;margin-left:6px">次调用（本月全平台）</span></div>
+        <div><span style="font-size:20px;font-weight:600;color:#34d399">≈¥{{ serper.cost }}</span>
+          <span style="font-size:12px;color:#64748b;margin-left:6px">估算花费（¥0.007/次）</span></div>
+      </div>
+      {% if serper.by_tenant %}
+      <div style="margin-top:14px;font-size:12px;color:#94a3b8">用量 Top（看谁在猛用）：</div>
+      <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">
+        {% for t in serper.by_tenant[:8] %}
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid #1e293b">
+          <span>{{ t.company or t.email or t.tenant_id[:8] }}</span>
+          <span style="font-weight:600">{{ t.used }} 次</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="margin-top:10px;font-size:12px;color:#64748b">本月还没有平台 Serper 调用记录。</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- 测试发信（配 DirectMail 后一键验证系统邮件通道）-->
   <div class="card" style="margin-bottom:28px">
     <div class="card-header"><h2>📧 测试系统发信通道</h2>
