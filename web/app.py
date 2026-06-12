@@ -902,57 +902,12 @@ def collect_page():
 @app.route("/collect/ocr-cards", methods=["POST"])
 @onboarding_required
 def ocr_cards():
-    """名片照片 AI 识别"""
-    import base64
-    tid = current_tid()
-    cfg = current_cfg()
-    deepseek_key = cfg.get("deepseek_api_key", "")
-    if not deepseek_key:
-        return jsonify({"ok": False, "error": "请先配置 DeepSeek API Key"})
-
-    files = request.files.getlist("cards")
-    if not files:
-        return jsonify({"ok": False, "error": "未上传文件"})
-
-    results = []
-    import requests as _req
-    for f in files[:10]:   # 最多10张
-        try:
-            img_b64 = base64.b64encode(f.read()).decode()
-            ext = Path(f.filename).suffix.lower().lstrip(".")
-            mime = "image/jpeg" if ext in ("jpg","jpeg") else f"image/{ext}"
-            resp = _req.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {deepseek_key}",
-                         "Content-Type": "application/json"},
-                json={
-                    "model": "deepseek-vl",
-                    "messages": [{
-                        "role": "user",
-                        "content": [
-                            {"type": "image_url",
-                             "image_url": {"url": f"data:{mime};base64,{img_b64}"}},
-                            {"type": "text",
-                             "text": ("从这张名片中提取信息，以JSON格式返回，字段："
-                                      "company_name, contact_name, contact_title, "
-                                      "email, phone, website, country。"
-                                      "如果某字段不存在填空字符串。只返回JSON，不要其他文字。")}
-                        ]
-                    }],
-                    "max_tokens": 300,
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"].strip()
-            content = content.replace("```json","").replace("```","").strip()
-            lead = json.loads(content)
-            lead["source"] = "展会名片"
-            results.append(lead)
-        except Exception as e:
-            print(f"[OCR] 名片识别失败: {e}")
-
-    return jsonify({"ok": True, "results": results})
+    """名片照片 AI 识别 —— 暂时下线。
+    原用 DeepSeek 视觉模型 deepseek-vl，已被官方下线；V4(flash/pro) 不支持图片输入，
+    暂无可用视觉模型。等接入新视觉服务（Claude / 阿里云 OCR）再恢复。"""
+    return jsonify({"ok": False, "error":
+        "名片照片识别暂时下线（视觉模型迁移中）。可先用上方「方式一：整理到 Excel/CSV 后导入」录入名片，"
+        "或去「导入展会数据」批量导入。"})
 
 
 @app.route("/collect/import-cards", methods=["POST"])
