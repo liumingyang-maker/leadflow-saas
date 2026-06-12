@@ -47,6 +47,13 @@ try:
 except Exception:                                  # pragma: no cover
     from module1_collectors.ai_extractor import AIExtractor
 
+# 用项目统一 logger（生产环境项目日志可见；print 在 waitress 下被缓冲看不到）
+try:
+    from compat import logger
+except Exception:                                  # pragma: no cover
+    import logging
+    logger = logging.getLogger("leadflow")
+
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
@@ -308,6 +315,7 @@ class CompetitorRadar:
         self.max_verify       = 15      # 每次最多验几个网址（控时间）
         # 额度统计
         self.serper_calls     = 0
+        self.serper_fails     = 0
         self._ex              = AIExtractor()
 
     # ── 对外主入口 ───────────────────────────────────────────────────────────
@@ -317,6 +325,10 @@ class CompetitorRadar:
         self._ex.deepseek_key = self.deepseek_key
         self._ex.proxy        = self.proxy
         self.serper_calls     = 0
+        self.serper_fails     = 0
+        logger.info(f"[Radar] 开扫：sources={self.sources} serper_key={'有' if self.serper_key else '无'} "
+                    f"deepseek_key={'有' if self.deepseek_key else '无'} "
+                    f"目标国数={len(self.target_countries or [])} 类目={self.my_category or '(空)'}")
         # 国家闸：按租户在「目标市场」选的国家构建英文目标集
         self._target_en = {_CN_EN[c] for c in (self.target_countries or []) if c in _CN_EN}
         sources = [s for s in (self.sources or []) if s in _VIA] or list(_VIA)
@@ -360,7 +372,8 @@ class CompetitorRadar:
         all_dist, all_intel, errors = [], [], []
         if not sites:
             return {"distributors": all_dist, "intel": all_intel,
-                    "errors": errors, "sites": sites, "serper_calls": self.serper_calls}
+                    "errors": errors, "sites": sites,
+                    "serper_calls": self.serper_calls, "serper_fails": self.serper_fails}
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
         workers = max(1, min(self.max_workers, len(sites)))
@@ -375,7 +388,7 @@ class CompetitorRadar:
                         all_intel.append(card)
                 except Exception as e:
                     errors.append(f"{site}: {e}")
-                    print(f"[Radar] 处理 {site} 出错: {e}")
+                    logger.warning(f"[Radar] 处理 {site} 出错: {e}")
 
         # 跨竞品合并 + 大玩家加权置顶
         all_dist = self._rank_and_merge(all_dist)
@@ -385,12 +398,13 @@ class CompetitorRadar:
 
         return {"distributors": all_dist, "intel": all_intel,
                 "errors": errors, "sites": sites,
-                "serper_calls": self.serper_calls}
+                "serper_calls": self.serper_calls, "serper_fails": self.serper_fails}
 
     # ── Serper 封装（带额度计数）─────────────────────────────────────────────
 
     def _serper(self, q: str, num: int = 10) -> list:
         if not self.serper_key:
+            logger.warning("[Radar] 未配置 Serper Key，反向/社媒/海关源无法搜索（只能跑官网扫描）")
             return []
         self.serper_calls += 1
         try:
@@ -399,10 +413,17 @@ class CompetitorRadar:
                 headers={"X-API-KEY": self.serper_key,
                          "Content-Type": "application/json"},
                 json={"q": q, "num": num}, timeout=20)
-            resp.raise_for_status()
-            return resp.json().get("organic", []) or []
+            if resp.status_code != 200:
+                self.serper_fails += 1
+                logger.warning(f"[Radar] Serper HTTP {resp.status_code} '{q[:40]}' "
+                               f"响应:{resp.text[:120]}（key 无效/额度用尽时常见 401/403）")
+                return []
+            results = resp.json().get("organic", []) or []
+            logger.info(f"[Radar] Serper '{q[:40]}' → {len(results)} 条结果")
+            return results
         except Exception as e:
-            print(f"[Radar] Serper 搜索失败 '{q[:40]}': {e}")
+            self.serper_fails += 1
+            logger.warning(f"[Radar] Serper 搜索异常 '{q[:40]}': {e}")
             return []
 
     # ── 自动搜竞品官网（auto_search）─────────────────────────────────────────
@@ -475,7 +496,7 @@ class CompetitorRadar:
         try:
             rows = self._ex.extract_from_text(blob, instruction, max_tokens=600)
         except Exception as e:
-            print(f"[Radar] 竞品类目验证失败: {e}")
+            logger.warning(f"[Radar] 竞品类目验证失败: {e}")
             return [c["url"] for c in cands]
         # rows 可能是 [{...}] 或 ["host",...]；两种都兼容
         ok = set()
@@ -486,7 +507,7 @@ class CompetitorRadar:
             if v:
                 ok.add(v)
         kept = [by_host[h] for h in by_host if h in ok]
-        print(f"[Radar] auto_search 候选 {len(cands)} 家 → 类目验证留下 {len(kept)} 家")
+        logger.info(f"[Radar] auto_search 候选 {len(cands)} 家 → 类目验证留下 {len(kept)} 家")
         return kept   # AI 判定都不合格就返回空，不硬塞杂质回来
 
     # ── 源①：反向经销商搜索（主引擎，本地化）────────────────────────────────
@@ -598,7 +619,7 @@ class CompetitorRadar:
         try:
             data = ex.extract_from_text(blob, instruction, max_tokens=1800)
         except Exception as e:
-            print(f"[Radar] {comp_host} · {label} AI 提取失败: {e}")
+            logger.warning(f"[Radar] {comp_host} · {label} AI 提取失败: {e}")
             return []
 
         rows, seen, dropped = [], set(), 0
@@ -616,7 +637,7 @@ class CompetitorRadar:
             if key in seen:
                 continue
             seen.add(key); rows.append(lead)
-        print(f"[Radar] {comp_host} · {label} → {len(rows)} 家（低分丢弃 {dropped}）")
+        logger.info(f"[Radar] {comp_host} · {label} → {len(rows)} 家（低分丢弃 {dropped}）")
         return rows
 
     # ── 源③：官网扫描（逐页 AI 提取）────────────────────────────────────────
@@ -625,7 +646,7 @@ class CompetitorRadar:
         ex = ex or self._ex
         home = home if home is not None else ex.fetch_html(site)
         if not home:
-            print(f"[Radar] 抓不到首页: {site}")
+            logger.warning(f"[Radar] 抓不到首页: {site}")
             return []
         pages = self._find_dealer_pages(site, home) or [site]
         instruction = (
@@ -640,7 +661,7 @@ class CompetitorRadar:
             try:
                 data = ex.extract(purl, instruction, max_tokens=1500)
             except Exception as e:
-                print(f"[Radar] 提取 {purl} 失败: {e}")
+                logger.warning(f"[Radar] 提取 {purl} 失败: {e}")
                 continue
             for d in data:
                 # 官网自己挂出的经销商页可信度高，给基线分
@@ -653,7 +674,7 @@ class CompetitorRadar:
                     continue
                 seen.add(key); rows.append(lead)
             time.sleep(random.uniform(0.2, 0.5))
-        print(f"[Radar] {comp_host} · 官网经销商 → {len(rows)} 家")
+        logger.info(f"[Radar] {comp_host} · 官网经销商 → {len(rows)} 家")
         return rows
 
     def _find_dealer_pages(self, base, home_html):

@@ -1362,7 +1362,15 @@ def radar_run():
                            else "（已存入下方列表，挑你想长期盯的单独开启「定期监控」）"))
 
             if out.get("serper_calls"):
-                logs.append(f"本次消耗 Serper 搜索 {out['serper_calls']} 次")
+                fails = out.get("serper_fails", 0)
+                if fails and fails >= out["serper_calls"]:
+                    logs.append(f"❌ Serper 搜索 {out['serper_calls']} 次全部失败"
+                                "（key 无效/额度用尽？）——反向/社媒/海关源都没出数据，"
+                                "请检查系统设置里的 SerpAPI Key 是不是 serper.dev 的有效 key。")
+                elif fails:
+                    logs.append(f"本次 Serper 搜索 {out['serper_calls']} 次，其中 {fails} 次失败")
+                else:
+                    logs.append(f"本次消耗 Serper 搜索 {out['serper_calls']} 次")
 
             if out.get("errors"):
                 logs.append("部分竞品处理出错：" + "；".join(out["errors"][:3]))
