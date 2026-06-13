@@ -94,10 +94,44 @@ a{text-decoration:none;color:inherit}
 .foot{border-top:1px solid var(--line);padding:30px 0;font-size:13px;color:var(--mut)}
 .foot .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
 
+/* real demo */
+.demo-card{max-width:760px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:16px;
+           box-shadow:0 12px 40px rgba(15,23,42,.07);overflow:hidden}
+.demo-head{background:#0f172a;color:#e2e8f0;padding:13px 22px;font-size:13.5px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.demo-head .badge{background:#16a34a;color:#fff;font-size:11px;font-weight:700;padding:2px 9px;border-radius:10px}
+.demo-head .src{font-family:monospace;color:#7dd3fc}
+.demo-row{display:grid;grid-template-columns:1.7fr 1fr auto;gap:10px;align-items:center;
+          padding:13px 22px;border-bottom:1px solid #f1f5f9;font-size:14px}
+.demo-row:last-child{border-bottom:none}
+.demo-row .co{font-weight:600;color:var(--ink)}
+.demo-row .ct,.demo-row .cy{color:var(--mut);font-size:13px}
+.demo-row .via{font-size:11px;color:#1e40af;background:#eff6ff;padding:3px 9px;border-radius:8px;white-space:nowrap}
+.demo-note{text-align:center;font-size:13.5px;color:var(--mut);margin-top:20px;line-height:1.7}
+.demo-note b{color:#16a34a}
+.shot-note{max-width:760px;margin:16px auto 0;border:1px dashed #cbd5e1;border-radius:10px;
+           padding:12px 16px;font-size:12.5px;color:#94a3b8;text-align:center;background:#fafbfc}
+
+/* compare */
+.cmp{max-width:820px;margin:0 auto;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.cmp .row{display:grid;grid-template-columns:1fr 1fr}
+.cmp .row>div{padding:15px 20px;font-size:14px;border-bottom:1px solid var(--line)}
+.cmp .row .before{background:#fff;color:var(--mut)}
+.cmp .row .after{background:#f0f9ff;color:var(--ink2);border-left:1px solid var(--line)}
+.cmp .hd>div{font-weight:700;color:var(--ink);font-size:14px}
+.cmp .row:last-child>div{border-bottom:none}
+
+/* trust */
+.trust-sec{max-width:760px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px 34px}
+.trust-items{display:grid;gap:13px}
+.trust-items div{font-size:14.5px;color:var(--ink2);display:flex;gap:11px;align-items:flex-start}
+.trust-items .lk{color:#16a34a;flex-shrink:0;font-weight:700}
+
 @media(max-width:860px){
   .hero h1{font-size:33px}
   .hero p.sub{font-size:16px}
   .fgrid,.steps,.pgrid{grid-template-columns:1fr}
+  .demo-row{grid-template-columns:1fr auto}
+  .demo-row .cy{display:none}
   .sec{padding:52px 0}
   .pcard.hot{transform:none}
 }
@@ -145,8 +179,25 @@ a{text-decoration:none;color:inherit}
   </div>
 </div></section>
 
-<!-- HOW IT WORKS -->
+<!-- REAL DEMO -->
 <section class="sec alt"><div class="wrap">
+  <h2>真实实跑，不是示意图</h2>
+  <p class="lead">我们用一个真实竞品官网 <code>sonlinkmotor.com</code> 跑了一次渠道雷达，下面是系统实际挖到的海外经销商——原样展示，未经美化。</p>
+  <div class="demo-card">
+    <div class="demo-head"><span class="badge">内测实跑</span>渠道雷达结果 · 竞品 <span class="src">sonlinkmotor.com</span> · 摩托车发动机</div>
+    <div class="demo-row"><div><div class="co">Sonlink Kenya</div><div class="ct">该品牌肯尼亚分支经销商</div></div><div class="cy">🇰🇪 肯尼亚</div><span class="via">海关反查</span></div>
+    <div class="demo-row"><div><div class="co">Sonlink Ghana</div><div class="ct">当地授权经销网络</div></div><div class="cy">🇬🇭 加纳</div><span class="via">海关反查</span></div>
+    <div class="demo-row"><div><div class="co">Sonlink Côte d'Ivoire</div><div class="ct">科特迪瓦法语区经销商</div></div><div class="cy">🇨🇮 科特迪瓦</div><span class="via">本地化搜索</span></div>
+    <div class="demo-row"><div><div class="co">Simba Group</div><div class="ct">尼日利亚摩托车分销集团</div></div><div class="cy">🇳🇬 尼日利亚</div><span class="via">反向搜索</span></div>
+    <div class="demo-row"><div><div class="co">Sonlink Perú</div><div class="ct">拉美市场经销商</div></div><div class="cy">🇵🇪 秘鲁</div><span class="via">海关反查</span></div>
+  </div>
+  <p class="demo-note">👆 全是<b>真实存在的当地经销商</b>，由「海关反查 + 反向搜索 + 本地化搜索」挖出，并经国家闸 / 质量闸过滤掉水货。<br>
+     注册后填你自己行业的竞品官网，挖出来的就是<b>你的</b>潜在客户。</p>
+  {# TODO 用户提供真实截图后插入：渠道雷达结果页 / AI 写开发信 / 客户分级看板（用 .shot-note 样式或 <img>）。当前真实数据卡已足够撑信任，先不放空占位图。 #}
+</div></section>
+
+<!-- HOW IT WORKS -->
+<section class="sec"><div class="wrap">
   <h2>四步开跑</h2>
   <p class="lead">注册后几分钟就能挖到第一批真实经销商线索。</p>
   <div class="steps">
@@ -154,6 +205,19 @@ a{text-decoration:none;color:inherit}
     <div class="stp"><div class="n">2</div><h4>选目标市场</h4><p>勾选目标大洲/国家，系统据此本地化精准搜索。</p></div>
     <div class="stp"><div class="n">3</div><h4>开雷达扫竞品</h4><p>填几个同行官网，四源并行挖出它们的海外经销商。</p></div>
     <div class="stp"><div class="n">4</div><h4>找邮箱·发开发信</h4><p>一键补邮箱、验真伪，双通道群发，自动跟进到成交。</p></div>
+  </div>
+</div></section>
+
+<!-- BEFORE / AFTER -->
+<section class="sec alt"><div class="wrap">
+  <h2>用外贸雷达前 → 用之后</h2>
+  <p class="lead">同样的获客活儿，省下来的是你最贵的时间。</p>
+  <div class="cmp">
+    <div class="row hd"><div class="before">😮‍💨 现在的做法</div><div class="after">🚀 用外贸雷达</div></div>
+    <div class="row"><div class="before">手动 Google 搜「motorcycle importer Nigeria」，逐条点开判断是不是真进口商，一天找 10 家</div><div class="after">填几个同行官网，系统自动反查它们的海外经销商，一次几十家、自带匹配度</div></div>
+    <div class="row"><div class="before">不会写英文开发信，网上抄的模板千篇一律，发非洲法语区还得自己翻</div><div class="after">AI 按买家国家/行业实时定制每一封，语气可调，自动出法语/西语/葡语/阿语</div></div>
+    <div class="row"><div class="before">发完石沉大海，不知道客户看没看，忙起来就忘了跟进</div><div class="after">自动追踪打开/点击，到点自动跟进序列，一个客户都不漏</div></div>
+    <div class="row"><div class="before">客户信息记脑子里或散落在好几个 Excel，老板一问答不上来</div><div class="after">统一客户库 + 商机看板按阶段管理，谁到哪一步一目了然</div></div>
   </div>
 </div></section>
 
@@ -184,6 +248,20 @@ a{text-decoration:none;color:inherit}
   <p class="pricing-note">💡 付款后由客服为你开通对应套餐；DeepSeek 与 Serper 的搜索/AI 额度由平台代付，零配置即用。</p>
 </div></section>
 
+<!-- DATA TRUST -->
+<section class="sec alt"><div class="wrap">
+  <h2>🔒 你的客户数据，你说了算</h2>
+  <p class="lead">客户名单是外贸人的命根子。我们在产品层面就做了隔离，也把规则写明白。</p>
+  <div class="trust-sec">
+    <div class="trust-items">
+      <div><span class="lk">✅</span><span>每个账号的数据<b>独立存储、互相隔离</b>，平台不会把你的客户名单卖给任何人或同行。</span></div>
+      <div><span class="lk">✅</span><span>客户数据<b>随时一键导出</b>（CSV），数据是你的，带得走。</span></div>
+      <div><span class="lk">✅</span><span>不想用了？联系我们即可<b>彻底删除账号及全部数据</b>，不留尾巴。</span></div>
+      <div><span class="lk">✅</span><span>采集与 AI 处理只为完成你下达的任务（找客户、写信），<b>不挪作他用</b>。</span></div>
+    </div>
+  </div>
+</div></section>
+
 <!-- BOTTOM CTA -->
 <section class="cta-band"><div class="wrap">
   <h2>今天就挖出第一批海外经销商</h2>
@@ -193,7 +271,13 @@ a{text-decoration:none;color:inherit}
 
 <footer class="foot"><div class="wrap">
   <div><b style="color:var(--brand)">🛰️ 外贸雷达</b> · AI 外贸智能获客系统</div>
-  <div>已有账号？<a href="/login" style="color:var(--brand)">登录</a></div>
+  <div>
+    <a href="/terms" style="color:var(--mut)">服务条款</a>
+    <span style="color:var(--line)">·</span>
+    <a href="/privacy" style="color:var(--mut)">隐私政策</a>
+    <span style="color:var(--line)">·</span>
+    已有账号？<a href="/login" style="color:var(--brand)">登录</a>
+  </div>
 </div></footer>
 
 </body>

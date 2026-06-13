@@ -325,6 +325,16 @@ def index():
     return render_template("landing.html", plans=PRICING_PLANS)
 
 
+@app.route("/terms")
+def terms():
+    return render_template("legal.html", kind="terms")
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("legal.html", kind="privacy")
+
+
 @app.route("/login", methods=["GET", "POST"])
 @rate_limit(max_hits=10, window=60, scope="login")
 def login():
