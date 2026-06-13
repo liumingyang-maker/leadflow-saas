@@ -2825,6 +2825,120 @@ start_radar_scheduler()
 
 
 # ─────────────────────────────────────────────────────────
+# 自动备份：本地每日一致性快照 + 轮换；异地 OSS 为可选（配了 env 才上传）
+# ─────────────────────────────────────────────────────────
+_backup_started = False
+
+
+def _backup_sqlite(src: Path, dst: Path) -> None:
+    """用 SQLite 在线备份 API 做一致性快照（即使源库正在写也不会抓到损坏数据）。"""
+    import sqlite3
+    con = sqlite3.connect(str(src))
+    try:
+        dest = sqlite3.connect(str(dst))
+        try:
+            con.backup(dest)
+        finally:
+            dest.close()
+    finally:
+        con.close()
+
+
+def _make_backup():
+    """打一份当前数据快照到 DATA_DIR/backups/backup_<ts>.zip，返回 zip 路径。"""
+    import zipfile, tempfile, shutil
+    backup_dir = _DATA_DIR / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")  # 含微秒，避免同秒多次触发撞名
+    zip_path = backup_dir / f"backup_{ts}.zip"
+
+    tmp = Path(tempfile.mkdtemp(prefix="lf_bak_"))
+    try:
+        # 全局库 admin.db 一致性快照
+        admin_src = _DATA_DIR / "admin.db"
+        if admin_src.exists():
+            _backup_sqlite(admin_src, tmp / "admin.db")
+        # 各租户：.db 用快照，config.json / 模板等其它文件直接拷
+        tenants_src = _DATA_DIR / "tenants"
+        if tenants_src.exists():
+            for tdir in tenants_src.iterdir():
+                if not tdir.is_dir():
+                    continue
+                out = tmp / "tenants" / tdir.name
+                out.mkdir(parents=True, exist_ok=True)
+                for f in tdir.iterdir():
+                    if not f.is_file():
+                        continue
+                    if f.suffix == ".db":
+                        _backup_sqlite(f, out / f.name)
+                    elif f.suffix in (".db-wal", ".db-shm"):
+                        continue          # 快照已含已提交的 WAL 数据，无需单独备
+                    else:
+                        shutil.copy2(f, out / f.name)
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+            for p in tmp.rglob("*"):
+                if p.is_file():
+                    z.write(p, p.relative_to(tmp))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # 轮换：只保留最近 N 份（默认 7）
+    keep = max(1, int(os.environ.get("BACKUP_KEEP", "7")))
+    for old in sorted(backup_dir.glob("backup_*.zip"))[:-keep]:
+        try:
+            old.unlink()
+        except Exception:
+            pass
+
+    _maybe_upload_offsite(zip_path)
+    return zip_path
+
+
+def _maybe_upload_offsite(zip_path: Path) -> None:
+    """配了阿里云 OSS 环境变量则异地上传一份；未配则跳过（本地快照仍在）。
+    需要 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET / OSS_BUCKET / OSS_ENDPOINT，
+    且服务器装了 oss2（pip install oss2）。消费级网盘（夸克等）无开放 API，
+    走「本地快照 → 人工下载 zip 上传网盘」即可，本函数不处理。"""
+    ak = os.environ.get("OSS_ACCESS_KEY_ID")
+    sk = os.environ.get("OSS_ACCESS_KEY_SECRET")
+    bucket_name = os.environ.get("OSS_BUCKET")
+    endpoint = os.environ.get("OSS_ENDPOINT")
+    if not (ak and sk and bucket_name and endpoint):
+        return
+    try:
+        import oss2
+        bucket = oss2.Bucket(oss2.Auth(ak, sk), endpoint, bucket_name)
+        bucket.put_object_from_file(f"leadflow-backups/{zip_path.name}", str(zip_path))
+        print(f"[backup] 已异地上传 OSS: {zip_path.name}")
+    except Exception as e:
+        print(f"[backup] OSS 上传失败（本地快照仍保留）: {e}")
+
+
+def start_auto_backup(interval: int = 86400) -> None:
+    """每天做一次本地快照（+可选 OSS 异地）。重复调用安全。可用 BACKUP_INTERVAL 改秒数。"""
+    global _backup_started
+    if _backup_started:
+        return
+    _backup_started = True
+    interval = max(3600, int(os.environ.get("BACKUP_INTERVAL", interval)))
+
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                p = _make_backup()
+                print(f"[backup] 备份完成: {p}")
+            except Exception as e:
+                print(f"[backup] 备份失败: {e}")
+
+    threading.Thread(target=_loop, daemon=True).start()
+    print(f"[backup] 自动备份调度已启动（每 {interval} 秒，保留 {os.environ.get('BACKUP_KEEP','7')} 份）")
+
+
+start_auto_backup()
+
+
+# ─────────────────────────────────────────────────────────
 # 启动
 # ─────────────────────────────────────────────────────────
 
