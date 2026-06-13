@@ -69,7 +69,8 @@ class TenantMailer:
     # ── 发信主入口 ──────────────────────────────────────────────────────────
 
     def send(self, to_email: str, subject: str, body_text: str,
-             to_name: str = "", tracking: dict = None) -> tuple[bool, str]:
+             to_name: str = "", tracking: dict = None,
+             unsubscribe_url: str = None) -> tuple[bool, str]:
         if not to_email:
             return False, "收件人邮箱为空"
         if not self.is_configured():
@@ -81,14 +82,17 @@ class TenantMailer:
 
         try:
             if self.channel == "esp":
-                return self._send_esp(to_email, to_name, subject, body_text, html)
-            return self._send_smtp(to_email, to_name, subject, body_text, html)
+                return self._send_esp(to_email, to_name, subject, body_text, html,
+                                      unsubscribe_url)
+            return self._send_smtp(to_email, to_name, subject, body_text, html,
+                                   unsubscribe_url)
         except Exception as e:
             return False, f"发送异常：{e}"
 
     # ── 通道 B：SMTP ────────────────────────────────────────────────────────
 
-    def _send_smtp(self, to_email, to_name, subject, text, html) -> tuple[bool, str]:
+    def _send_smtp(self, to_email, to_name, subject, text, html,
+                   unsubscribe_url=None) -> tuple[bool, str]:
         host = self.cfg.get("smtp_host", "").strip()
         port = int(self.cfg.get("smtp_port") or 465)
         user = self.cfg.get("smtp_user", "").strip()
@@ -101,6 +105,10 @@ class TenantMailer:
         msg["Subject"] = subject
         msg["From"] = formataddr((from_name, from_email))
         msg["To"] = formataddr((to_name, to_email)) if to_name else to_email
+        if unsubscribe_url:
+            # 一键退订头（邮件客户端会显示"退订"按钮，利于送达率 + 合规）
+            msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+            msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
         msg.attach(MIMEText(text, "plain", "utf-8"))
         msg.attach(MIMEText(html, "html", "utf-8"))
 
@@ -119,15 +127,17 @@ class TenantMailer:
 
     # ── 通道 A：ESP ─────────────────────────────────────────────────────────
 
-    def _send_esp(self, to_email, to_name, subject, text, html) -> tuple[bool, str]:
+    def _send_esp(self, to_email, to_name, subject, text, html,
+                  unsubscribe_url=None) -> tuple[bool, str]:
         prov = (self.cfg.get("esp_provider") or "sendgrid").lower()
         if prov == "sendgrid":
-            return self._send_sendgrid(to_email, to_name, subject, text, html)
+            return self._send_sendgrid(to_email, to_name, subject, text, html, unsubscribe_url)
         if prov == "mailgun":
-            return self._send_mailgun(to_email, to_name, subject, text, html)
+            return self._send_mailgun(to_email, to_name, subject, text, html, unsubscribe_url)
         return False, f"未知的 ESP 服务商：{prov}"
 
-    def _send_sendgrid(self, to_email, to_name, subject, text, html) -> tuple[bool, str]:
+    def _send_sendgrid(self, to_email, to_name, subject, text, html,
+                       unsubscribe_url=None) -> tuple[bool, str]:
         key = self.cfg.get("esp_api_key", "").strip()
         from_email = self.cfg.get("esp_from_email", "").strip()
         from_name  = self.cfg.get("esp_from_name") or self.cfg.get("company_name") or from_email
@@ -142,6 +152,9 @@ class TenantMailer:
             "tracking_settings": {"click_tracking": {"enable": True},
                                   "open_tracking": {"enable": True}},
         }
+        if unsubscribe_url:
+            payload["headers"] = {"List-Unsubscribe": f"<{unsubscribe_url}>",
+                                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
         r = requests.post("https://api.sendgrid.com/v3/mail/send",
                           headers={"Authorization": f"Bearer {key}",
                                    "Content-Type": "application/json"},
@@ -150,7 +163,8 @@ class TenantMailer:
             return True, "已通过 SendGrid 发送"
         return False, f"SendGrid 返回 {r.status_code}：{r.text[:200]}"
 
-    def _send_mailgun(self, to_email, to_name, subject, text, html) -> tuple[bool, str]:
+    def _send_mailgun(self, to_email, to_name, subject, text, html,
+                      unsubscribe_url=None) -> tuple[bool, str]:
         key    = self.cfg.get("esp_api_key", "").strip()
         domain = self.cfg.get("esp_domain", "").strip()
         region = (self.cfg.get("esp_region") or "us").lower()
@@ -160,13 +174,17 @@ class TenantMailer:
             return False, "Mailgun 需要填写发信域名（esp_domain）"
         base = "https://api.eu.mailgun.net" if region == "eu" else "https://api.mailgun.net"
         to_field = formataddr((to_name, to_email)) if to_name else to_email
+        data = {"from": formataddr((from_name, from_email)),
+                "to": to_field, "subject": subject, "text": text, "html": html,
+                "o:tracking": "yes", "o:tracking-opens": "yes",
+                "o:tracking-clicks": "yes"}
+        if unsubscribe_url:
+            data["h:List-Unsubscribe"] = f"<{unsubscribe_url}>"
+            data["h:List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
         r = requests.post(
             f"{base}/v3/{domain}/messages",
             auth=("api", key),
-            data={"from": formataddr((from_name, from_email)),
-                  "to": to_field, "subject": subject, "text": text, "html": html,
-                  "o:tracking": "yes", "o:tracking-opens": "yes",
-                  "o:tracking-clicks": "yes"},
+            data=data,
             timeout=25)
         if r.status_code in (200, 201):
             return True, "已通过 Mailgun 发送"

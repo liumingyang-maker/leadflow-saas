@@ -164,6 +164,9 @@ tr:hover td{background:#fafbfd}
     </a>
 
     <div class="nav-group">客户管理</div>
+    <a href="/crm" class="{{ 'active' if request.endpoint == 'crm_board' }}">
+      <i class="nav-icon">📈</i> 商机看板 <span class="nav-new">NEW</span>
+    </a>
     <a href="/leads" class="{{ 'active' if request.endpoint in ('leads_list','dashboard','lead_detail') }}">
       <i class="nav-icon">📋</i> 客户列表
     </a>
@@ -177,6 +180,9 @@ tr:hover td{background:#fafbfd}
     <div class="nav-group">触达转化</div>
     <a href="/email-templates" class="{{ 'active' if request.endpoint == 'email_templates' }}">
       <i class="nav-icon">✉️</i> 邮件模板
+    </a>
+    <a href="/deliverability" class="{{ 'active' if request.endpoint == 'deliverability' }}">
+      <i class="nav-icon">📬</i> 发信送达率 <span class="nav-new">NEW</span>
     </a>
     <a href="#" onclick="triggerTask('score');return false;">
       <i class="nav-icon">⭐</i> 立即评分

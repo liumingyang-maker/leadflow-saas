@@ -129,6 +129,22 @@ def init():
                 used       INTEGER DEFAULT 0,
                 PRIMARY KEY (tenant_id, provider, period)
             );
+
+            -- 退订抑制名单：退订过的买家邮箱，永不再发（合规底线 + 保护送达率）
+            CREATE TABLE IF NOT EXISTS suppressions (
+                tenant_id  TEXT NOT NULL,
+                email      TEXT NOT NULL,
+                created_at TEXT,
+                PRIMARY KEY (tenant_id, email)
+            );
+
+            -- 每日发信计数：节流/预热用（按 UTC 日期统计当天已发送封数）
+            CREATE TABLE IF NOT EXISTS send_counter (
+                tenant_id  TEXT NOT NULL,
+                day        TEXT NOT NULL,         -- YYYY-MM-DD
+                count      INTEGER DEFAULT 0,
+                PRIMARY KEY (tenant_id, day)
+            );
         """)
         try:
             conn.execute("ALTER TABLE tenants ADD COLUMN email_verified INTEGER DEFAULT 0")
@@ -582,6 +598,77 @@ def get_open_stats(tenant_id: str) -> dict:
         "open_rate": round(opened / sent * 100, 1) if sent else 0.0,
         "click_rate": round(clicked / sent * 100, 1) if sent else 0.0,
     }
+
+
+# ── 退订抑制名单（合规 + 送达率保护）──────────────────────────
+
+def add_suppression(tenant_id: str, email: str) -> None:
+    email = (email or "").strip().lower()
+    if not tenant_id or not email:
+        return
+    with get_conn() as conn:
+        conn.execute("""INSERT OR IGNORE INTO suppressions (tenant_id, email, created_at)
+                        VALUES (?,?,?)""", (tenant_id, email, _now()))
+
+
+def is_suppressed(tenant_id: str, email: str) -> bool:
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    with get_conn() as conn:
+        row = conn.execute("SELECT 1 FROM suppressions WHERE tenant_id=? AND email=? LIMIT 1",
+                           (tenant_id, email)).fetchone()
+    return row is not None
+
+
+def list_suppressions(tenant_id: str, limit: int = 500) -> list:
+    with get_conn() as conn:
+        rows = conn.execute("""SELECT email, created_at FROM suppressions
+                               WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?""",
+                            (tenant_id, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_suppressions(tenant_id: str) -> int:
+    with get_conn() as conn:
+        return conn.execute("SELECT COUNT(*) FROM suppressions WHERE tenant_id=?",
+                            (tenant_id,)).fetchone()[0]
+
+
+def remove_suppression(tenant_id: str, email: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM suppressions WHERE tenant_id=? AND email=?",
+                     (tenant_id, (email or "").strip().lower()))
+
+
+# ── 每日发信计数（节流 / 预热）──────────────────────────────
+
+def _today() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def record_send(tenant_id: str, n: int = 1) -> None:
+    if not tenant_id or n <= 0:
+        return
+    with get_conn() as conn:
+        conn.execute("""INSERT INTO send_counter (tenant_id, day, count) VALUES (?,?,?)
+                        ON CONFLICT(tenant_id, day) DO UPDATE SET count=count+?""",
+                     (tenant_id, _today(), n, n))
+
+
+def sends_today(tenant_id: str) -> int:
+    with get_conn() as conn:
+        row = conn.execute("SELECT count FROM send_counter WHERE tenant_id=? AND day=?",
+                           (tenant_id, _today())).fetchone()
+    return row["count"] if row else 0
+
+
+def first_send_day(tenant_id: str):
+    """最早一次发信的日期（YYYY-MM-DD），用于预热爬坡计算。无则 None。"""
+    with get_conn() as conn:
+        row = conn.execute("SELECT MIN(day) d FROM send_counter WHERE tenant_id=?",
+                           (tenant_id,)).fetchone()
+    return row["d"] if row and row["d"] else None
 
 
 # ── API 本地用量计数（Serper 等无余额接口的服务）────────────

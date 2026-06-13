@@ -1,0 +1,152 @@
+{% extends "app/base.html" %}
+{% block title %}发信送达率{% endblock %}
+{% block page_title %}发信送达率{% endblock %}
+{% block content %}
+<div style="max-width:880px">
+
+  <!-- 健康度卡 -->
+  <div class="card card-pad" style="margin-bottom:18px">
+    <div class="card-title">📊 发信健康度</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:14px">
+      {% for label, val, sub in [
+        ('已发送', health.sent, '封开发信'),
+        ('打开率', health.open_rate ~ '%', health.opened ~ ' 封被打开'),
+        ('点击率', health.click_rate ~ '%', health.clicked ~ ' 封被点击'),
+        ('退订', health.unsubscribed, '人退订'),
+        ('今日已发', health.sends_today, '上限 ' ~ health.daily_cap),
+      ] %}
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:12px;color:var(--muted)">{{ label }}</div>
+        <div style="font-size:24px;font-weight:800;letter-spacing:-.5px">{{ val }}</div>
+        <div style="font-size:11px;color:var(--faint)">{{ sub }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:12px">
+      💡 打开/点击数据：SMTP 通道靠系统追踪像素（需部署到公网域名才准），专业 ESP 用其自带追踪。
+      打开率低、退订多通常意味着送达进了垃圾箱或名单不精准。
+    </p>
+  </div>
+
+  <!-- 节流 / 预热 -->
+  <div class="card card-pad" style="margin-bottom:18px">
+    <div class="card-title">🐢 发送节流 / 预热</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+      一次性猛发大量邮件最容易被判垃圾。设个每日上限；新域名/新账号建议开「预热」——首日 20 封，每天 +10 逐步爬坡。
+    </p>
+    <form method="POST" action="/deliverability/settings" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px">每日发送上限</label>
+        <input type="number" name="daily_send_cap" value="{{ daily_send_cap }}" placeholder="默认 200" min="1" max="5000"
+               style="padding:8px 12px;border:1px solid var(--border-strong);border-radius:8px;font-size:13px;width:140px">
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding-bottom:8px">
+        <input type="checkbox" name="warmup_enabled" {{ 'checked' if warmup_enabled }} style="width:16px;height:16px">
+        启用预热爬坡（新域名推荐）
+      </label>
+      <button class="btn btn-primary btn-sm" type="submit" style="padding:8px 16px">保存</button>
+    </form>
+    <p style="font-size:12px;color:var(--faint);margin-top:10px">
+      当前生效上限：<b>{{ health.daily_cap }}</b> 封/天 · 今日已发 {{ health.sends_today }} 封。
+      上限只约束「自动跟进」等批量发送；详情页手动逐条发不受限。
+    </p>
+  </div>
+
+  <!-- 发信域名认证检测 -->
+  <div class="card card-pad" style="margin-bottom:18px">
+    <div class="card-title">🔐 发信域名认证（SPF / DMARC）</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      用独立域名发信、并配好 SPF/DKIM/DMARC，是海外送达率的地基。下面查你域名的 SPF 和 DMARC 是否到位
+      （DKIM 由各 ESP 用专属记录配置，检测见下方向导）。
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="domInput" value="{{ domain }}" placeholder="发信域名，如 mail.yoursite.com"
+             style="flex:1;min-width:220px;padding:8px 12px;border:1px solid var(--border-strong);border-radius:8px;font-size:13px">
+      <button class="btn btn-primary btn-sm" onclick="checkDomain(this)" style="padding:8px 16px">检测</button>
+    </div>
+    <div id="domResult" style="margin-top:12px;font-size:13px"></div>
+  </div>
+
+  <!-- ESP 域名认证向导 -->
+  <div class="card card-pad" style="margin-bottom:18px">
+    <div class="card-title">🚀 专业 ESP 配置向导（推荐）</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      QQ/个人邮箱群发海外极易进垃圾箱。认真做就上专业 ESP + 独立域名认证。你的发信通道：
+      <b>{{ '专业 ESP · ' ~ esp_provider|capitalize if channel == 'esp' else '邮箱 SMTP' }}</b>
+      （到 <a href="/settings">系统设置</a> 切换/配置）。
+    </p>
+    {% set guides = [
+      ('SendGrid', ['注册并验证发件邮箱', 'Settings → Sender Authentication → Authenticate Your Domain', '按它给的 3 条 CNAME 加到你域名 DNS（即 DKIM）', '验证通过后，把 API Key + 发件邮箱填到系统设置']),
+      ('Mailgun', ['添加并验证你的 Sending Domain（建议子域名 mg.yoursite.com）', '把它给的 TXT(SPF/DKIM) + MX + CNAME 加到 DNS', '等待验证全绿', 'API Key + 域名 + 区域(us/eu) 填到系统设置']),
+      ('阿里云邮件推送', ['控制台新建发信域名（子域名，别用根域名）', '加它给的 TXT(所有权/SPF/DKIM) + MX + DMARC 到云解析', '回控制台验证全绿', '新建发信地址+SMTP密码 → 用「邮箱 SMTP」通道填 smtpdm.aliyun.com:465'])
+    ] %}
+    <div style="display:flex;flex-direction:column;gap:8px">
+      {% for name, steps in guides %}
+      <details style="border:1px solid var(--border);border-radius:8px;padding:10px 14px">
+        <summary style="font-size:13px;font-weight:600;cursor:pointer">{{ name }} 配置步骤</summary>
+        <ol style="margin:10px 0 4px 18px;font-size:13px;color:#374151;line-height:1.9">
+          {% for s in steps %}<li>{{ s }}</li>{% endfor %}
+        </ol>
+      </details>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- 退订名单 -->
+  <div class="card card-pad">
+    <div class="card-title">🚫 退订名单 <span style="font-weight:400;color:var(--faint);font-size:12px">（{{ health.unsubscribed }} 人，永不再发）</span></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      买家点开发信里的退订链接后自动进这里，系统发信前会自动跳过。误退订可在此移除。
+    </p>
+    {% if supp %}
+    <div style="display:flex;flex-direction:column;gap:2px">
+      {% for s in supp %}
+      <div class="supp-row" data-email="{{ s.email }}"
+           style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px">
+        <span>{{ s.email }}</span>
+        <span style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:11px;color:var(--faint)">{{ s.created_at[:10] if s.created_at else '' }}</span>
+          <button class="btn btn-sm" onclick="unsuppress(this,'{{ s.email }}')" style="padding:3px 10px">移除</button>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="font-size:13px;color:var(--faint)">还没有人退订。</div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+function checkDomain(btn){
+  var dom=(document.getElementById('domInput').value||'').trim();
+  var box=document.getElementById('domResult');
+  if(!dom){ box.innerHTML='<span style="color:#dc2626">请先填发信域名</span>'; return; }
+  var old=btn.textContent; btn.disabled=true; btn.textContent='检测中…';
+  box.innerHTML='<span style="color:#6b7280">正在查询 DNS…</span>';
+  fetch('/deliverability/check-domain',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({domain:dom})}).then(r=>r.json()).then(d=>{
+    if(!d.ok){ box.innerHTML='<span style="color:#dc2626">'+(d.error||'检测失败')+'</span>'; return; }
+    function row(ok,label,rec){
+      return '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9">'+
+        (ok?'✅':'❌')+' <b>'+label+'</b> '+(ok?'已配置':'<span style="color:#dc2626">未找到</span>')+
+        (rec?'<div style="color:#9ca3af;font-size:11px;font-family:monospace;margin-top:2px;word-break:break-all">'+rec+'</div>':'')+'</div>';
+    }
+    box.innerHTML='<div style="font-size:12px;color:#6b7280;margin-bottom:4px">域名 '+d.domain+'：</div>'+
+      row(d.spf,'SPF',d.spf_record)+row(d.dmarc,'DMARC',d.dmarc_record)+
+      '<div style="font-size:12px;color:#9ca3af;margin-top:8px">DKIM 由 ESP 用专属选择器记录配置，按上方对应向导加好后在 ESP 后台验证。'+
+      (d.spf&&d.dmarc?'':'缺失项请到你的域名 DNS 解析处补上。')+'</div>';
+  }).catch(()=>{ box.innerHTML='<span style="color:#dc2626">请求出错</span>'; })
+    .finally(()=>{ btn.disabled=false; btn.textContent=old; });
+}
+function unsuppress(btn,email){
+  if(!confirm('把 '+email+' 移出退订名单？移除后系统会再次向其发信。')) return;
+  fetch('/deliverability/unsuppress',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({email:email})}).then(r=>r.json()).then(d=>{
+    if(d.ok){ var row=btn.closest('.supp-row'); if(row) row.remove(); toast('已移除','ok'); }
+    else toast('移除失败','err');
+  });
+}
+</script>
+{% endblock %}

@@ -31,6 +31,28 @@
 </a>
 {% endif %}
 
+{% if due_count and due_count > 0 %}
+<!-- 商机待跟进提醒 -->
+<a href="/crm"
+   style="display:flex;align-items:center;gap:12px;text-decoration:none;
+          background:linear-gradient(135deg,#fef2f2,#fee2e2);border:1px solid #fca5a5;
+          border-radius:12px;padding:14px 18px;margin-bottom:18px">
+  <span style="position:relative;flex-shrink:0">
+    <span style="font-size:22px">📌</span>
+    <span style="position:absolute;top:-4px;right:-6px;background:#dc2626;color:#fff;
+                 font-size:11px;font-weight:700;min-width:18px;height:18px;line-height:18px;
+                 text-align:center;border-radius:9px;padding:0 5px">{{ due_count }}</span>
+  </span>
+  <span style="flex:1">
+    <span style="display:block;font-size:14px;font-weight:700;color:#b91c1c">
+      {{ due_count }} 条商机到了该跟进的时间</span>
+    <span style="display:block;font-size:12.5px;color:#dc2626;margin-top:2px">
+      别让到嘴的客户凉了 —— 去商机看板看看红色日期标记的卡片。</span>
+  </span>
+  <span style="flex-shrink:0;font-size:13px;font-weight:600;color:#dc2626">去跟进 →</span>
+</a>
+{% endif %}
+
 <!-- 关键数据 -->
 <div class="stat-grid">
   {% for label, val, color in [

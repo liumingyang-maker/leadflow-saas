@@ -1,0 +1,147 @@
+{% extends "app/base.html" %}
+{% block title %}商机看板{% endblock %}
+{% block page_title %}商机看板{% endblock %}
+{% block topbar_actions %}
+  <a href="/leads" class="btn btn-sm">📋 列表视图</a>
+{% endblock %}
+
+{% block extra_style %}
+<style>
+.crm-funnel{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px}
+.fn-cell{flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);
+         border-radius:10px;padding:10px 12px;box-shadow:var(--shadow)}
+.fn-cell .l{font-size:12px;color:var(--muted)}
+.fn-cell .c{font-size:22px;font-weight:800;letter-spacing:-.5px}
+.fn-cell .a{font-size:11px;color:var(--faint);margin-top:1px}
+.due-banner{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:10px;
+            padding:10px 14px;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.board{display:flex;gap:12px;overflow-x:auto;align-items:flex-start;padding-bottom:14px}
+.col{flex:0 0 268px;background:#f6f8fc;border:1px solid var(--border);border-radius:12px;
+     display:flex;flex-direction:column;max-height:calc(100vh - 230px)}
+.col.over{outline:2px dashed var(--brand);outline-offset:-2px;background:#eef4ff}
+.col-head{padding:11px 13px;display:flex;align-items:center;justify-content:space-between;
+          border-bottom:1px solid var(--border);position:sticky;top:0}
+.col-head .nm{font-size:13px;font-weight:700;display:flex;align-items:center;gap:7px}
+.col-dot{width:9px;height:9px;border-radius:50%}
+.col-cnt{font-size:11px;color:var(--muted);background:#fff;border:1px solid var(--border);
+         border-radius:10px;padding:1px 8px;font-weight:600}
+.col-body{padding:8px;overflow-y:auto;flex:1;min-height:40px}
+.lead-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:11px 12px;
+           margin-bottom:8px;box-shadow:var(--shadow);cursor:grab;transition:box-shadow .12s}
+.lead-card:hover{box-shadow:var(--shadow-md);text-decoration:none}
+.lead-card.dragging{opacity:.45}
+.lc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
+.lc-name{font-size:13px;font-weight:700;color:var(--text);line-height:1.3}
+.lc-meta{font-size:11.5px;color:var(--muted);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap}
+.lc-row{margin-top:7px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lc-fu{font-size:11px;padding:1px 7px;border-radius:8px;background:#f1f5f9;color:#475569}
+.lc-fu.overdue{background:#fee2e2;color:#b91c1c;font-weight:600}
+.lc-fu.today{background:#fef3c7;color:#92400e;font-weight:600}
+.lc-amt{font-size:11px;font-weight:700;color:#047857}
+.lc-tag{font-size:10.5px;padding:1px 7px;border-radius:8px;background:#eef2ff;color:#4338ca}
+.col-empty{font-size:12px;color:var(--faint);text-align:center;padding:18px 8px}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set dots = {'new':'#0ea5e9','contacted':'#f59e0b','negotiating':'#8b5cf6','quoted':'#6366f1','sample':'#14b8a6','won':'#16a34a','lost':'#9ca3af'} %}
+
+{% if due_count %}
+<div class="due-banner">📌 有 <b style="margin:0 3px">{{ due_count }}</b> 条商机到了该跟进的时间，卡片上有红色日期标记，记得处理。</div>
+{% endif %}
+
+<div class="crm-funnel">
+  {% for f in funnel %}
+  <div class="fn-cell">
+    <div class="l">{{ f.label }}</div>
+    <div class="c">{{ f.count }}</div>
+    <div class="a">{% if f.amount %}约 {{ '{:,.0f}'.format(f.amount) }}{% else %}—{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="board" id="board">
+  {% for key, label in stages %}
+  <div class="col" data-stage="{{ key }}">
+    <div class="col-head">
+      <div class="nm"><span class="col-dot" style="background:{{ dots[key] }}"></span>{{ label }}</div>
+      <span class="col-cnt" id="cnt-{{ key }}">{{ board[key]|length }}</span>
+    </div>
+    <div class="col-body" data-stage="{{ key }}">
+      {% for l in board[key] %}
+      <a class="lead-card" href="/lead/{{ l.id }}" draggable="true" data-id="{{ l.id }}">
+        <div class="lc-top">
+          <div class="lc-name">{{ l.company_name }}</div>
+          {% if l.grade %}<span class="grade grade-{{ l.grade }}">{{ l.grade }}</span>{% endif %}
+        </div>
+        <div class="lc-meta">
+          {% if l.country %}<span>🌍 {{ l.country }}</span>{% endif %}
+          {% if l.final_score is not none %}<span>{{ l.final_score }}分</span>{% endif %}
+        </div>
+        <div class="lc-row">
+          {% if l.next_follow_up_at %}
+          <span class="lc-fu {{ 'overdue' if l.overdue else ('today' if l.due_today else '') }}">📅 {{ l.next_follow_up_at }}</span>
+          {% endif %}
+          {% if l.deal_amount %}<span class="lc-amt">{{ '{:,.0f}'.format(l.deal_amount) }} {{ l.deal_currency or '' }}</span>{% endif %}
+        </div>
+        {% if l.tags %}
+        <div class="lc-row">
+          {% for t in l.tags %}<span class="lc-tag">{{ t }}</span>{% endfor %}
+        </div>
+        {% endif %}
+      </a>
+      {% else %}
+      <div class="col-empty">拖动卡片到这里</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+(function(){
+  var dragId=null, dragEl=null;
+  document.querySelectorAll('.lead-card').forEach(function(c){
+    c.addEventListener('dragstart',function(e){
+      dragId=c.getAttribute('data-id'); dragEl=c; c.classList.add('dragging');
+      e.dataTransfer.effectAllowed='move';
+    });
+    c.addEventListener('dragend',function(){ c.classList.remove('dragging'); });
+    // 拖动时不要触发点击跳转（拖完松手浏览器不会点，但防误点）
+  });
+  document.querySelectorAll('.col').forEach(function(col){
+    var body=col.querySelector('.col-body');
+    col.addEventListener('dragover',function(e){ e.preventDefault(); col.classList.add('over'); });
+    col.addEventListener('dragleave',function(){ col.classList.remove('over'); });
+    col.addEventListener('drop',function(e){
+      e.preventDefault(); col.classList.remove('over');
+      if(!dragEl) return;
+      var toStage=col.getAttribute('data-stage');
+      var fromBody=dragEl.parentElement;
+      var fromStage=fromBody.getAttribute('data-stage');
+      if(toStage===fromStage) return;
+      // 乐观更新 DOM
+      var empty=body.querySelector('.col-empty'); if(empty) empty.remove();
+      body.insertBefore(dragEl, body.firstChild);
+      bumpCount(fromStage,-1); bumpCount(toStage,1); ensureEmpty(fromBody);
+      var movingId=dragId;
+      fetch('/lead/'+movingId+'/stage',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({stage:toStage})}).then(function(r){return r.json();}).then(function(d){
+        if(!d.ok){ toast('更新失败','err'); setTimeout(function(){location.reload();},600); }
+        else toast('已移动到「'+col.querySelector('.nm').textContent.trim()+'」','ok');
+      }).catch(function(){ toast('网络错误','err'); });
+    });
+  });
+  function bumpCount(stage,delta){
+    var el=document.getElementById('cnt-'+stage); if(!el) return;
+    el.textContent=Math.max(0,(parseInt(el.textContent,10)||0)+delta);
+  }
+  function ensureEmpty(body){
+    if(!body.querySelector('.lead-card') && !body.querySelector('.col-empty')){
+      var d=document.createElement('div'); d.className='col-empty'; d.textContent='拖动卡片到这里';
+      body.appendChild(d);
+    }
+  }
+})();
+</script>
+{% endblock %}

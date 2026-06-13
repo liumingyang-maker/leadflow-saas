@@ -560,11 +560,16 @@ def workbench():
         pipeline = pipeline_summary()
     except Exception:
         pipeline = []
+    try:
+        due_count = db.count_due_followups()
+    except Exception:
+        due_count = 0
     return render_template("app/workbench.html", cfg=current_cfg(),
                            stats=db.get_stats(),
                            email_stats=email_stats,
                            recent_leads=recent_leads,
                            review_count=review_count,
+                           due_count=due_count,
                            pipeline=pipeline,
                            history=db.get_collection_history(limit=5))
 
@@ -625,9 +630,12 @@ def lead_detail(lead_id):
         email_tracking = admin_db.get_tracking_for_lead(current_tid(), lead_id)
     except Exception:
         email_tracking = []
+    from database import PIPELINE_STAGES
     return render_template("app/detail.html", cfg=cfg,
                            lead=lead, history=db.get_outreach_history(lead_id),
                            email_tracking=email_tracking,
+                           activities=db.get_activities(lead_id),
+                           stages=PIPELINE_STAGES,
                            templates=_render_templates_for_lead(current_tid(), cfg, lead),
                            mail_channel_ready=bool(
                                (cfg.get("mail_channel", "smtp") == "esp"
@@ -648,6 +656,12 @@ def update_lead(lead_id):
     if not updates:
         return jsonify({"ok": False}), 400
     ok = db.update_lead(lead_id, updates)
+    # 手动改 status 时同步商机阶段（保持看板一致）
+    if "status" in updates:
+        from database import STATUS_TO_STAGE
+        stg = STATUS_TO_STAGE.get(updates["status"])
+        if stg:
+            db.set_stage(lead_id, stg)
     # 客户已回复/成交/拒绝 → 停止对其的自动跟进
     if updates.get("status") in ("replied", "converted", "rejected"):
         try:
@@ -661,6 +675,77 @@ def update_lead(lead_id):
 @onboarding_required
 def delete_lead(lead_id):
     return jsonify({"ok": _get_db(current_tid()).delete_lead(lead_id)})
+
+
+# ─────────────────────────────────────────────────────────
+# 轻量 CRM：商机看板 + 每条线索的阶段/跟进/金额/标签/备注
+# ─────────────────────────────────────────────────────────
+
+@app.route("/crm")
+@onboarding_required
+def crm_board():
+    from database import PIPELINE_STAGES
+    db = _get_db(current_tid())
+    return render_template("app/crm.html", cfg=current_cfg(),
+                           stages=PIPELINE_STAGES,
+                           board=db.leads_by_stage(),
+                           funnel=db.pipeline_funnel(),
+                           due_count=db.count_due_followups())
+
+
+@app.route("/lead/<lead_id>/stage", methods=["POST"])
+@onboarding_required
+def lead_set_stage(lead_id):
+    from database import STAGE_KEYS
+    stage = (request.get_json(silent=True) or {}).get("stage", "")
+    if stage not in STAGE_KEYS:
+        return jsonify({"ok": False, "error": "无效阶段"}), 400
+    db = _get_db(current_tid())
+    ok = db.set_stage(lead_id, stage)
+    # 进入成交/搁置 → 停止自动跟进
+    if stage in ("won", "lost"):
+        try:
+            admin_db.cancel_followups_for_lead(current_tid(), lead_id)
+        except Exception:
+            pass
+    return jsonify({"ok": ok})
+
+
+@app.route("/lead/<lead_id>/follow-up", methods=["POST"])
+@onboarding_required
+def lead_set_followup(lead_id):
+    when = (request.get_json(silent=True) or {}).get("date", "")[:10]
+    _get_db(current_tid()).set_follow_up(lead_id, when)
+    return jsonify({"ok": True})
+
+
+@app.route("/lead/<lead_id>/deal", methods=["POST"])
+@onboarding_required
+def lead_set_deal(lead_id):
+    data = request.get_json(silent=True) or {}
+    _get_db(current_tid()).set_deal(lead_id, data.get("amount"),
+                                    data.get("currency", "USD")[:8])
+    return jsonify({"ok": True})
+
+
+@app.route("/lead/<lead_id>/tags", methods=["POST"])
+@onboarding_required
+def lead_set_tags(lead_id):
+    tags = (request.get_json(silent=True) or {}).get("tags", [])
+    if not isinstance(tags, list):
+        tags = []
+    _get_db(current_tid()).set_tags(lead_id, tags)
+    return jsonify({"ok": True})
+
+
+@app.route("/lead/<lead_id>/note", methods=["POST"])
+@onboarding_required
+def lead_add_note(lead_id):
+    note = (request.get_json(silent=True) or {}).get("note", "")[:1000].strip()
+    if not note:
+        return jsonify({"ok": False}), 400
+    _get_db(current_tid()).log_activity(lead_id, "note", note)
+    return jsonify({"ok": True})
 
 
 # ── 一键找邮箱（theHarvester + Photon）──────────────────────────────
@@ -758,6 +843,14 @@ def send_lead_email(lead_id):
     if not subject or not body:
         return jsonify({"ok": False, "error": "主题和正文不能为空"}), 400
 
+    # 退订抑制：买家退订过就不再发（合规底线 + 保护送达率）
+    try:
+        if admin_db.is_suppressed(tid, to):
+            return jsonify({"ok": False,
+                            "error": "该买家已退订，按合规要求不能再发。"}), 400
+    except Exception:
+        pass
+
     # 发信前验证邮箱真伪（设置里默认开启）
     if cfg.get("verify_before_send", True):
         try:
@@ -780,28 +873,79 @@ def send_lead_email(lead_id):
                         "click_base": f"{base}/t/c/{trk_id}?u="}
         except Exception as e:
             print(f"[send-email] 追踪创建失败: {e}")
+    # 退订链接 + 页脚（List-Unsubscribe 头 + 正文可见退订入口）
+    unsub_url = _unsub_url(tid, to)
+    send_body = body + (
+        f"\n\n———\nIf you no longer wish to receive these emails, "
+        f"unsubscribe here: {unsub_url}")
     try:
         from tenant_mailer import TenantMailer
         mailer = TenantMailer(cfg)
-        ok, info = mailer.send(to, subject, body,
+        ok, info = mailer.send(to, subject, send_body,
                                to_name=lead.get("contact_name", ""),
-                               tracking=tracking)
+                               tracking=tracking, unsubscribe_url=unsub_url)
     except Exception as e:
         return jsonify({"ok": False, "error": f"发送失败：{e}"}), 500
 
     if not ok:
         return jsonify({"ok": False, "error": info}), 400
 
+    try:
+        admin_db.record_send(tid)                 # 当日发信计数（节流/预热用）
+    except Exception:
+        pass
     # 记录外联历史 + 更新客户状态/邮箱
     db.log_outreach(lead_id, channel="email", direction="outbound",
                     subject=subject, content=body)
-    upd = {"status": "contacted"}
     if not lead.get("email"):
-        upd["email"] = to
-    db.update_lead(lead_id, upd)
+        db.update_lead(lead_id, {"email": to})
+    db.log_activity(lead_id, "email", f"发开发信：{subject}")
+    # 还在「新线索」阶段 → 自动推进到「已联系」（set_stage 会同步 status=contacted）
+    if (lead.get("stage") or "new") == "new":
+        db.set_stage(lead_id, "contacted")
+    else:
+        db.update_lead(lead_id, {"status": "contacted"})
     # 登记自动跟进（没回复就到点自动发下一封）
     _enroll_followup_if_enabled(tid, cfg, lead_id)
     return jsonify({"ok": True, "info": f"{info}（{mailer.channel_label()}）"})
+
+
+# ── AI 写开发信（适度个性化：点行业/市场，不点竞品品牌）─────────────
+@app.route("/lead/<lead_id>/ai-email", methods=["POST"])
+@onboarding_required
+def ai_write_email(lead_id):
+    tid  = current_tid()
+    cfg  = current_cfg()                       # 注入平台 DeepSeek key（零配置即用）
+    db   = _get_db(tid)
+    lead = db.get_lead(lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "客户不存在"}), 404
+    if not cfg.get("deepseek_api_key"):
+        return jsonify({"ok": False, "error": "AI 不可用：请在系统设置填 DeepSeek Key，或确认平台额度未用尽"}), 400
+    data   = request.get_json(silent=True) or {}
+    tone   = data.get("tone", "professional")
+    length = data.get("length", "medium")
+    lang   = data.get("lang") or None          # 空=按买家国家自动选
+    sender = {
+        "company_name":   cfg.get("company_name", ""),
+        "sender_name":    cfg.get("sender_name", "") or cfg.get("email_from_name", ""),
+        "email_from_name": cfg.get("email_from_name", ""),
+        "product_name":   cfg.get("product_name", ""),
+    }
+    try:
+        from email_writer import generate_email
+        res = generate_email(cfg["deepseek_api_key"], lead,
+                             cfg.get("product_profile") or {}, sender,
+                             tone=tone, length=length, lang=lang,
+                             proxy=cfg.get("radar_proxy", ""))
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"生成失败：{e}"}), 500
+    if res.get("ok"):
+        try:
+            db.log_activity(lead_id, "ai_draft", f"AI 起草开发信（{res.get('lang','en')}）：{res.get('subject','')}")
+        except Exception:
+            pass
+    return jsonify(res)
 
 
 # ── 记录 WhatsApp 触达（点击 wa.me 后回报）──────────────────────────
@@ -816,7 +960,11 @@ def log_lead_whatsapp(lead_id):
     msg  = (data.get("message") or "").strip()[:2000]
     db.log_outreach(lead_id, channel="whatsapp", direction="outbound",
                     subject="WhatsApp", content=msg)
-    db.update_lead(lead_id, {"status": "contacted"})
+    db.log_activity(lead_id, "whatsapp", "WhatsApp 触达")
+    if (lead.get("stage") or "new") == "new":
+        db.set_stage(lead_id, "contacted")
+    else:
+        db.update_lead(lead_id, {"status": "contacted"})
     return jsonify({"ok": True})
 
 
@@ -966,6 +1114,46 @@ def track_click(tracking_id):
     return redirect(target)
 
 
+# ── 退订（公开端点，签名 token 自带 tenant+email，无需存储）──────────────
+
+def _unsub_serializer():
+    from itsdangerous import URLSafeSerializer
+    return URLSafeSerializer(app.secret_key, salt="unsubscribe")
+
+
+def _unsub_token(tid: str, email: str) -> str:
+    return _unsub_serializer().dumps({"t": tid, "e": (email or "").strip().lower()})
+
+
+def _unsub_url(tid: str, email: str) -> str:
+    return f"{_public_base()}/u/{_unsub_token(tid, email)}"
+
+
+@app.route("/u/<token>", methods=["GET", "POST"])
+def unsubscribe(token):
+    """买家点开发信里的退订链接 → 进该租户抑制名单，永不再发。
+    支持邮件客户端的一键退订（List-Unsubscribe-Post 会发 POST）。"""
+    try:
+        data = _unsub_serializer().loads(token)
+        tid, email = data.get("t"), data.get("e")
+    except Exception:
+        return Response("<p style='font:16px sans-serif;text-align:center;margin-top:80px'>"
+                        "Invalid unsubscribe link.</p>", mimetype="text/html"), 400
+    try:
+        admin_db.add_suppression(tid, email)
+    except Exception as e:
+        print(f"[unsub] 退订失败: {e}")
+    html = ("<!doctype html><meta charset='utf-8'>"
+            "<div style=\"font:16px/1.6 -apple-system,Segoe UI,sans-serif;max-width:460px;"
+            "margin:90px auto;text-align:center;color:#1f2937\">"
+            "<div style='font-size:42px'>✅</div>"
+            "<h2 style='margin:10px 0'>You have been unsubscribed</h2>"
+            f"<p style='color:#6b7280'>{email} will no longer receive emails from this sender.</p>"
+            "<p style='color:#9ca3af;font-size:13px;margin-top:18px'>您已成功退订，不会再收到此发件人的邮件。</p>"
+            "</div>")
+    return Response(html, mimetype="text/html")
+
+
 @app.route("/export")
 @onboarding_required
 def export_csv():
@@ -990,6 +1178,88 @@ def stats_page():
                            stats=db.get_stats(),
                            email_stats=email_stats,
                            history=db.get_collection_history(limit=10))
+
+
+# ─────────────────────────────────────────────────────────
+# 发信送达率（健康度 + 节流/预热 + 域名认证向导 + 退订名单）
+# ─────────────────────────────────────────────────────────
+
+@app.route("/deliverability")
+@onboarding_required
+def deliverability():
+    tid = current_tid()
+    cfg = tenant_ctx.load_config(tid)          # raw：显示客户自己的发信设置
+    try:
+        health = admin_db.get_open_stats(tid)
+    except Exception:
+        health = {"sent": 0, "opened": 0, "clicked": 0, "open_rate": 0, "click_rate": 0}
+    try:
+        health["unsubscribed"] = admin_db.count_suppressions(tid)
+        health["sends_today"]  = admin_db.sends_today(tid)
+    except Exception:
+        health["unsubscribed"] = 0; health["sends_today"] = 0
+    health["daily_cap"] = _effective_daily_cap(tid, cfg)
+    try:
+        supp = admin_db.list_suppressions(tid, limit=50)
+    except Exception:
+        supp = []
+    from_email = (cfg.get("esp_from_email") or cfg.get("smtp_from_email")
+                  or cfg.get("smtp_user") or "")
+    domain = from_email.split("@")[-1] if "@" in from_email else ""
+    return render_template("app/deliverability.html", cfg=current_cfg(),
+                           health=health, supp=supp, domain=domain,
+                           channel=cfg.get("mail_channel", "smtp"),
+                           esp_provider=(cfg.get("esp_provider") or "sendgrid"),
+                           daily_send_cap=cfg.get("daily_send_cap") or "",
+                           warmup_enabled=bool(cfg.get("warmup_enabled")))
+
+
+@app.route("/deliverability/settings", methods=["POST"])
+@onboarding_required
+def deliverability_settings():
+    tid = current_tid()
+    cfg = tenant_ctx.load_config(tid)
+    cap = request.form.get("daily_send_cap", "").strip()
+    if cap.isdigit():
+        cfg["daily_send_cap"] = max(1, min(5000, int(cap)))
+    cfg["warmup_enabled"] = request.form.get("warmup_enabled") == "on"
+    tenant_ctx.save_config(tid, cfg)
+    return redirect(url_for("deliverability"))
+
+
+@app.route("/deliverability/check-domain", methods=["POST"])
+@onboarding_required
+def deliverability_check_domain():
+    domain = (request.get_json(silent=True) or {}).get("domain", "").strip().lower()
+    domain = domain.split("@")[-1].strip("/")
+    if not domain or "." not in domain:
+        return jsonify({"ok": False, "error": "请填一个有效的发信域名，如 mail.yoursite.com"}), 400
+
+    def _txt(name):
+        try:
+            import requests as _rq
+            r = _rq.get("https://dns.google/resolve",
+                        params={"name": name, "type": "TXT"}, timeout=8)
+            return [a.get("data", "").strip('"') for a in r.json().get("Answer", [])]
+        except Exception:
+            return []
+
+    spf_recs = [t for t in _txt(domain) if t.lower().startswith("v=spf1")]
+    dmarc_recs = [t for t in _txt("_dmarc." + domain) if t.lower().startswith("v=dmarc1")]
+    return jsonify({"ok": True, "domain": domain,
+                    "spf": bool(spf_recs), "spf_record": spf_recs[0] if spf_recs else "",
+                    "dmarc": bool(dmarc_recs), "dmarc_record": dmarc_recs[0] if dmarc_recs else ""})
+
+
+@app.route("/deliverability/unsuppress", methods=["POST"])
+@onboarding_required
+def deliverability_unsuppress():
+    email = (request.get_json(silent=True) or {}).get("email", "")
+    try:
+        admin_db.remove_suppression(current_tid(), email)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ─────────────────────────────────────────────────────────
@@ -2061,6 +2331,41 @@ def _public_base() -> str:
         return ""
 
 
+def _effective_daily_cap(tid: str, cfg: dict) -> int:
+    """当日可发上限：设置的 daily_send_cap（默认200）；开了预热则按账号发信天数爬坡。"""
+    try:
+        cap = int(cfg.get("daily_send_cap") or 0)
+    except Exception:
+        cap = 0
+    if cap <= 0:
+        cap = 200
+    if cfg.get("warmup_enabled"):
+        days = 0
+        first = None
+        try:
+            first = admin_db.first_send_day(tid)
+        except Exception:
+            pass
+        if first:
+            try:
+                d0 = datetime.strptime(first, "%Y-%m-%d").replace(tzinfo=timezone.utc).date()
+                days = (datetime.now(timezone.utc).date() - d0).days
+            except Exception:
+                days = 0
+        cap = min(cap, 20 + days * 10)        # 预热：首日 20，每天 +10
+    return cap
+
+
+def _send_quota(tid: str, cfg: dict):
+    """返回 (是否还能发, 当日上限, 当日已发)。"""
+    cap = _effective_daily_cap(tid, cfg)
+    try:
+        used = admin_db.sends_today(tid)
+    except Exception:
+        used = 0
+    return used < cap, cap, used
+
+
 def _followup_steps(cfg: dict) -> list:
     """根据租户设置生成跟进步骤。默认：首封后3天发一次跟进。"""
     steps = []
@@ -2116,6 +2421,14 @@ def process_due_followups() -> int:
             to = (lead.get("email") or "").strip()
             if not to:
                 admin_db.finish_followup(fid, "stopped"); continue
+            # 买家已退订 → 停止跟进
+            if admin_db.is_suppressed(tid, to):
+                admin_db.finish_followup(fid, "stopped"); continue
+            # 节流/预热：当日额度用满 → 推迟到明天，今天不再发
+            allowed, cap, used = _send_quota(tid, cfg)
+            if not allowed:
+                admin_db.postpone_followup(fid, _utc_after(1))
+                continue
 
             tpls    = _render_templates_for_lead(tid, cfg, lead)
             tpl     = tpls.get(steps[step]["template"]) or {}
@@ -2129,12 +2442,19 @@ def process_due_followups() -> int:
                 tracking = {"open_url": f"{base}/t/o/{trk}.gif",
                             "click_base": f"{base}/t/c/{trk}?u="}
 
+            unsub_url = _unsub_url(tid, to)
+            send_body = body + (f"\n\n———\nIf you no longer wish to receive these "
+                                f"emails, unsubscribe here: {unsub_url}")
             from tenant_mailer import TenantMailer
             ok, info = TenantMailer(cfg).send(
-                to, subject, body, to_name=lead.get("contact_name", ""),
-                tracking=tracking)
+                to, subject, send_body, to_name=lead.get("contact_name", ""),
+                tracking=tracking, unsubscribe_url=unsub_url)
 
             if ok:
+                try:
+                    admin_db.record_send(tid)
+                except Exception:
+                    pass
                 db.log_outreach(lead_id, channel="email", direction="outbound",
                                 subject=subject, content=body)
                 nxt = step + 1

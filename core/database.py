@@ -29,6 +29,32 @@ except ImportError:
 
 DEFAULT_DB_PATH = "leads.db"
 
+# ── 商机管道阶段（轻量 CRM）─────────────────────────────────
+# stage 是 CRM 看板的细粒度阶段；status 仍是系统逻辑用的粗粒度标记
+# （自动跟进等按 status 走）。改 stage 时按下表同步 status。
+PIPELINE_STAGES = [
+    ("new",         "新线索"),
+    ("contacted",   "已联系"),
+    ("negotiating", "回复洽谈"),
+    ("quoted",      "报价中"),
+    ("sample",      "样品/打样"),
+    ("won",         "成交"),
+    ("lost",        "搁置输单"),
+]
+STAGE_LABELS = dict(PIPELINE_STAGES)
+STAGE_KEYS   = [k for k, _ in PIPELINE_STAGES]
+# 进入这些阶段视为"已成交/已结束"，自动跟进应停止
+STAGE_TO_STATUS = {
+    "new": "new", "contacted": "contacted", "negotiating": "replied",
+    "quoted": "replied", "sample": "replied", "won": "converted", "lost": "rejected",
+}
+# 老数据按 status 回填 stage
+STATUS_TO_STAGE = {
+    "new": "new", "scored": "new", "contacted": "contacted",
+    "replied": "negotiating", "converted": "won", "rejected": "lost",
+    "review": "new",
+}
+
 
 class Database:
     def __init__(self, db_path: str = None):
@@ -97,11 +123,26 @@ class Database:
                     status               TEXT DEFAULT 'new',
                                                        -- new/scored/contacted/replied/converted/rejected
                     notes                TEXT,          -- 人工备注
+                    stage                TEXT,          -- 商机管道阶段（轻量 CRM，见 PIPELINE_STAGES）
+                    next_follow_up_at    TEXT,          -- 下次跟进时间（YYYY-MM-DD），CRM 提醒用
+                    deal_amount          REAL,          -- 预计成交金额（选填，漏斗金额统计用）
+                    deal_currency        TEXT,          -- 币种，如 USD/CNY
+                    tags                 TEXT,          -- JSON 数组，自定义标签
                     created_at           TEXT,
                     updated_at           TEXT,
                     contacted_at         TEXT,
                     replied_at           TEXT,
                     converted_at         TEXT
+                );
+
+                -- ── 活动时间线（轻量 CRM）──────────────────────────
+                CREATE TABLE IF NOT EXISTS lead_activities (
+                    id          TEXT PRIMARY KEY,
+                    lead_id     TEXT NOT NULL,
+                    type        TEXT NOT NULL,   -- stage/email/whatsapp/note/follow_up/ai_draft
+                    content     TEXT,
+                    created_at  TEXT,
+                    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
                 );
 
                 -- ── 联系记录表 ────────────────────────────────────
@@ -166,8 +207,32 @@ class Database:
                     ON leads(company_name_norm);
                 CREATE INDEX IF NOT EXISTS idx_outreach_lead
                     ON outreach_log(lead_id);
+                CREATE INDEX IF NOT EXISTS idx_activities_lead
+                    ON lead_activities(lead_id);
             """)
+        self._migrate()
         logger.info(f"数据库初始化完成: {self.db_path}")
+
+    def _migrate(self):
+        """对已有 leads 表补 CRM 新列（老库没有这些列）+ 按 status 回填 stage。
+        CREATE TABLE IF NOT EXISTS 不会给旧表加列，所以这里 ALTER 兜底。"""
+        with self.get_conn() as conn:
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(leads)").fetchall()}
+            for col, decl in (("stage", "TEXT"), ("next_follow_up_at", "TEXT"),
+                              ("deal_amount", "REAL"), ("deal_currency", "TEXT"),
+                              ("tags", "TEXT")):
+                if col not in cols:
+                    conn.execute(f"ALTER TABLE leads ADD COLUMN {col} {decl}")
+            # 回填 stage：stage 为空的按 status 映射一次
+            rows = conn.execute(
+                "SELECT id, status FROM leads WHERE stage IS NULL OR stage = ''"
+            ).fetchall()
+            for r in rows:
+                stg = STATUS_TO_STAGE.get((r["status"] or "new"), "new")
+                conn.execute("UPDATE leads SET stage=? WHERE id=?", (stg, r["id"]))
+            # 列已就绪，再建依赖新列的索引（放这里避免旧库 executescript 时列还不存在）
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_leads_stage ON leads(stage)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_leads_followup ON leads(next_follow_up_at)")
 
     # ─────────────────────────────────────────
     # 工具方法
@@ -206,7 +271,7 @@ class Database:
         if row is None:
             return None
         d = dict(row)
-        for json_field in ("hs_codes", "sources", "risk_flags"):
+        for json_field in ("hs_codes", "sources", "risk_flags", "tags"):
             if json_field in d:
                 d[json_field] = Database._from_json(d[json_field])
         return d
@@ -513,6 +578,142 @@ class Database:
                 "SELECT DISTINCT country FROM leads WHERE country IS NOT NULL ORDER BY country"
             ).fetchall()
         return [r[0] for r in rows]
+
+    # ─────────────────────────────────────────
+    # 轻量 CRM：商机管道 / 活动 / 跟进 / 标签 / 金额
+    # ─────────────────────────────────────────
+
+    def log_activity(self, lead_id: str, atype: str, content: str = "") -> None:
+        """记一条活动时间线（发信/WhatsApp/换阶段/备注/跟进/AI 草稿）。"""
+        with self.get_conn() as conn:
+            conn.execute("""
+                INSERT INTO lead_activities (id, lead_id, type, content, created_at)
+                VALUES (?,?,?,?,?)
+            """, (self._new_id(), lead_id, atype, content[:1000], self._now()))
+
+    def get_activities(self, lead_id: str, limit: int = 100) -> list[dict]:
+        with self.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM lead_activities WHERE lead_id=? ORDER BY created_at DESC LIMIT ?",
+                (lead_id, limit)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_stage(self, lead_id: str, stage: str) -> bool:
+        """换商机阶段：更新 stage + 同步 status（含时间戳）+ 记活动。"""
+        if stage not in STAGE_KEYS:
+            return False
+        lead = self.get_lead(lead_id)
+        if not lead:
+            return False
+        old = lead.get("stage") or ""
+        # 同步 status（自动跟进等系统逻辑仍按 status 走）
+        new_status = STAGE_TO_STATUS.get(stage)
+        fields = {"stage": stage}
+        now = self._now()
+        if new_status:
+            fields["status"] = new_status
+            if new_status == "contacted" and not lead.get("contacted_at"):
+                fields["contacted_at"] = now
+            elif new_status == "replied" and not lead.get("replied_at"):
+                fields["replied_at"] = now
+            elif new_status == "converted":
+                fields["converted_at"] = now
+        self.update_lead(lead_id, fields)
+        if old != stage:
+            self.log_activity(lead_id, "stage",
+                              f"{STAGE_LABELS.get(old, old or '—')} → {STAGE_LABELS.get(stage, stage)}")
+        return True
+
+    def set_follow_up(self, lead_id: str, when: str) -> bool:
+        """设/清下次跟进时间（when 为 'YYYY-MM-DD' 或空字符串=清除）。"""
+        when = (when or "").strip()
+        self.update_lead(lead_id, {"next_follow_up_at": when or None})
+        if when:
+            self.log_activity(lead_id, "follow_up", f"设定下次跟进：{when}")
+        return True
+
+    def set_deal(self, lead_id: str, amount, currency: str = "USD") -> bool:
+        """设/清预计成交金额（amount 为 None/空=清除）。"""
+        try:
+            amt = float(amount) if amount not in (None, "") else None
+        except (TypeError, ValueError):
+            amt = None
+        self.update_lead(lead_id, {"deal_amount": amt,
+                                   "deal_currency": (currency or "USD")[:8]})
+        if amt is not None:
+            self.log_activity(lead_id, "note", f"预计金额：{amt:g} {currency}")
+        return True
+
+    def set_tags(self, lead_id: str, tags: list) -> bool:
+        clean = [str(t).strip()[:24] for t in (tags or []) if str(t).strip()][:12]
+        self.update_lead(lead_id, {"tags": self._to_json(clean)})
+        return True
+
+    def leads_by_stage(self, per_stage: int = 100) -> dict:
+        """看板数据：{stage: [lead 卡片,...]}。排除待确认(status=review)的未确认线索。"""
+        out = {k: [] for k in STAGE_KEYS}
+        with self.get_conn() as conn:
+            rows = conn.execute("""
+                SELECT id, company_name, country, grade, final_score, email, phone,
+                       stage, status, next_follow_up_at, deal_amount, deal_currency,
+                       tags, updated_at
+                FROM leads
+                WHERE COALESCE(status,'') != 'review'
+                ORDER BY (next_follow_up_at IS NULL), next_follow_up_at ASC,
+                         final_score DESC
+            """).fetchall()
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        for r in rows:
+            d = dict(r)
+            stg = d.get("stage") or "new"
+            if stg not in out:
+                stg = "new"
+            if len(out[stg]) >= per_stage:
+                continue
+            d["tags"] = self._from_json(d.get("tags")) or []
+            fu = d.get("next_follow_up_at")
+            d["overdue"] = bool(fu and fu < today and stg not in ("won", "lost"))
+            d["due_today"] = bool(fu and fu == today)
+            out[stg].append(d)
+        return out
+
+    def pipeline_funnel(self) -> list[dict]:
+        """漏斗：每阶段 数量 + 金额合计（按 deal_currency 不分，简单求和）。"""
+        with self.get_conn() as conn:
+            rows = conn.execute("""
+                SELECT stage, COUNT(*) AS cnt, COALESCE(SUM(deal_amount),0) AS amount
+                FROM leads WHERE COALESCE(status,'') != 'review'
+                GROUP BY stage
+            """).fetchall()
+        agg = {r["stage"]: (r["cnt"], r["amount"]) for r in rows}
+        return [{"key": k, "label": lbl,
+                 "count": agg.get(k, (0, 0))[0],
+                 "amount": round(agg.get(k, (0, 0))[1] or 0, 2)}
+                for k, lbl in PIPELINE_STAGES]
+
+    def due_followups(self, limit: int = 50) -> list[dict]:
+        """到期/逾期待跟进的线索（next_follow_up_at <= 今天，且未成交/搁置）。"""
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        with self.get_conn() as conn:
+            rows = conn.execute("""
+                SELECT * FROM leads
+                WHERE next_follow_up_at IS NOT NULL AND next_follow_up_at != ''
+                  AND next_follow_up_at <= ?
+                  AND COALESCE(stage,'') NOT IN ('won','lost')
+                ORDER BY next_follow_up_at ASC LIMIT ?
+            """, (today, limit)).fetchall()
+        return [self._row_to_dict(r) for r in rows]
+
+    def count_due_followups(self) -> int:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        with self.get_conn() as conn:
+            return conn.execute("""
+                SELECT COUNT(*) FROM leads
+                WHERE next_follow_up_at IS NOT NULL AND next_follow_up_at != ''
+                  AND next_follow_up_at <= ?
+                  AND COALESCE(stage,'') NOT IN ('won','lost')
+            """, (today,)).fetchone()[0]
 
     # ─────────────────────────────────────────
     # outreach_log 表

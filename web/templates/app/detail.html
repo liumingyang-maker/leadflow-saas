@@ -54,6 +54,46 @@
 
   </div>
 
+  <!-- 商机管理（轻量 CRM）-->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#6b7280">📈 商机管理</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px">
+      <div>
+        <label style="font-size:12px;color:#9ca3af;display:block;margin-bottom:5px">商机阶段</label>
+        <select id="stageSel" onchange="setStage(this.value)"
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          {% for k, label in stages %}
+          <option value="{{ k }}" {{ 'selected' if lead.stage == k }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#9ca3af;display:block;margin-bottom:5px">下次跟进</label>
+        <input type="date" id="fuDate" value="{{ lead.next_follow_up_at or '' }}" onchange="setFollowup(this.value)"
+               style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#9ca3af;display:block;margin-bottom:5px">预计金额（选填）</label>
+        <div style="display:flex;gap:6px">
+          <input type="number" id="dealAmt" value="{{ lead.deal_amount or '' }}" placeholder="如 45000"
+                 style="flex:1;min-width:0;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          <select id="dealCur" style="padding:7px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            {% for c in ['USD','CNY','EUR'] %}<option {{ 'selected' if lead.deal_currency == c }}>{{ c }}</option>{% endfor %}
+          </select>
+          <button onclick="setDeal()" class="btn btn-sm">存</button>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px">
+      <label style="font-size:12px;color:#9ca3af;display:block;margin-bottom:5px">标签（逗号分隔）</label>
+      <div style="display:flex;gap:6px">
+        <input id="tagInput" value="{{ lead.tags|join(', ') if lead.tags else '' }}" placeholder="高意向, 价格敏感, 老客户介绍"
+               style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        <button onclick="setTags()" class="btn btn-sm">存标签</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 智能工具：找邮箱 / 验真 / 深度调查 -->
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px">
     <h3 style="font-size:14px;font-weight:600;margin-bottom:4px;color:#6b7280">🔎 智能工具</h3>
@@ -100,6 +140,30 @@
       </select>
       <span style="font-size:12px;color:#9ca3af">收件人：{{ lead.email or '（无邮箱，请先一键找邮箱）' }}</span>
     </div>
+
+    <!-- AI 写开发信 -->
+    <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button id="btnAiWrite" onclick="aiWriteEmail(this)"
+              style="padding:7px 14px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">🪄 AI 写开发信</button>
+      <select id="aiTone" style="padding:6px 8px;border:1px solid #d8b4fe;border-radius:6px;font-size:12px">
+        <option value="professional">专业稳重</option>
+        <option value="concise">简短直接</option>
+      </select>
+      <select id="aiLength" style="padding:6px 8px;border:1px solid #d8b4fe;border-radius:6px;font-size:12px">
+        <option value="medium">适中</option>
+        <option value="short">简短</option>
+      </select>
+      <select id="aiLang" style="padding:6px 8px;border:1px solid #d8b4fe;border-radius:6px;font-size:12px">
+        <option value="">自动（按买家国家）</option>
+        <option value="en">英语</option>
+        <option value="fr">法语</option>
+        <option value="es">西班牙语</option>
+        <option value="pt">葡萄牙语</option>
+        <option value="ar">阿拉伯语</option>
+      </select>
+      <span id="aiWriteStatus" style="font-size:12px;color:#7c3aed"></span>
+    </div>
+
     <input id="mailSubject" placeholder="邮件主题"
            style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px">
     <textarea id="mailBody" rows="9"
@@ -125,33 +189,36 @@
     </div>
   </div>
 
-  <!-- 状态更新 -->
+  <!-- 备注 -->
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px">
-    <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#6b7280">状态 & 备注</h3>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-      {% for s, label, color in [
-        ('contacted','标记已联系','#c2410c'),
-        ('replied','标记已回复','#16a34a'),
-        ('converted','已成交','#065f46'),
-        ('rejected','已拒绝','#991b1b'),
-      ] %}
-      <button onclick="updateLead('{{ lead.id }}',{status:'{{ s }}'}).then(()=>location.reload())"
-              style="padding:6px 14px;border-radius:6px;border:1px solid #e2e8f0;
-                     background:#fff;color:{{ color }};font-size:13px;cursor:pointer">
-        {{ label }}
-      </button>
-      {% endfor %}
-    </div>
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#6b7280">📝 备注</h3>
+    <textarea id="notesBox" rows="3" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;
+              border-radius:6px;font-size:13px;resize:vertical">{{ lead.notes or '' }}</textarea>
+    <button onclick="updateLead('{{ lead.id }}',{notes:document.getElementById('notesBox').value}).then(()=>toast('备注已保存','ok'))"
+            style="margin-top:8px;padding:7px 18px;background:#2563eb;color:#fff;
+                   border:none;border-radius:6px;font-size:13px;cursor:pointer">
+      保存备注
+    </button>
+  </div>
 
-    <div style="margin-top:4px">
-      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">备注</label>
-      <textarea id="notesBox" rows="3" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;
-                border-radius:6px;font-size:13px;resize:vertical">{{ lead.notes or '' }}</textarea>
-      <button onclick="updateLead('{{ lead.id }}',{notes:document.getElementById('notesBox').value}).then(()=>location.reload())"
-              style="margin-top:8px;padding:7px 18px;background:#2563eb;color:#fff;
-                     border:none;border-radius:6px;font-size:13px;cursor:pointer">
-        保存备注
-      </button>
+  <!-- 活动时间线 -->
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#6b7280">🕘 活动时间线</h3>
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      <input id="actNote" placeholder="记一条跟进/沟通记录…"
+             style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <button onclick="addNote()" class="btn btn-sm btn-primary">添加</button>
+    </div>
+    <div id="actList">
+      {% for a in activities %}
+      <div class="act-row" style="padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px;display:flex;gap:10px;align-items:baseline">
+        <span style="color:#9ca3af;font-size:11px;white-space:nowrap">{{ a.created_at[:16] if a.created_at else '' }}</span>
+        <span>{{ {'stage':'📈','email':'✉️','whatsapp':'💬','note':'📝','follow_up':'📅','ai_draft':'🪄'}.get(a.type,'•') }}</span>
+        <span style="flex:1">{{ a.content }}</span>
+      </div>
+      {% else %}
+      <div id="actEmpty" style="font-size:12px;color:#9ca3af">暂无活动记录。发信、换阶段、设跟进都会自动记在这里。</div>
+      {% endfor %}
     </div>
   </div>
 
@@ -210,6 +277,62 @@ const LEAD_EMAIL = {{ (lead.email or '')|tojson }};
 const LEAD_PHONE = {{ (lead.phone or '')|tojson }};
 
 function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── 轻量 CRM：阶段 / 跟进 / 金额 / 标签 / 活动 ──
+function _crmPost(path, body, okMsg){
+  return fetch('/lead/'+LEAD_ID+path, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)}).then(r=>r.json()).then(d=>{
+    if(d.ok){ if(okMsg) toast(okMsg,'ok'); } else { toast(d.error||'操作失败','err'); }
+    return d;
+  }).catch(()=>toast('网络错误','err'));
+}
+function setStage(v){ _crmPost('/stage',{stage:v},'阶段已更新'); }
+function setFollowup(v){ _crmPost('/follow-up',{date:v}, v?'已设下次跟进 '+v:'已清除跟进'); }
+function setDeal(){
+  var amt=document.getElementById('dealAmt').value;
+  var cur=document.getElementById('dealCur').value;
+  _crmPost('/deal',{amount:amt, currency:cur}, '金额已保存');
+}
+function setTags(){
+  var tags=(document.getElementById('tagInput').value||'').split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+  _crmPost('/tags',{tags:tags}, '标签已保存');
+}
+function addNote(){
+  var inp=document.getElementById('actNote'); var note=(inp.value||'').trim();
+  if(!note){ return; }
+  _crmPost('/note',{note:note}, '已记录').then(d=>{
+    if(d && d.ok){
+      inp.value='';
+      var em=document.getElementById('actEmpty'); if(em) em.remove();
+      var now=new Date().toISOString().slice(0,16).replace('T',' ');
+      var row=document.createElement('div');
+      row.className='act-row';
+      row.style.cssText='padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px;display:flex;gap:10px;align-items:baseline';
+      row.innerHTML='<span style="color:#9ca3af;font-size:11px;white-space:nowrap">'+now+'</span><span>📝</span><span style="flex:1">'+esc(note)+'</span>';
+      var list=document.getElementById('actList'); list.insertBefore(row, list.firstChild);
+    }
+  });
+}
+
+// ── AI 写开发信 ──
+function aiWriteEmail(btn){
+  var st=document.getElementById('aiWriteStatus');
+  var old=btn.textContent; btn.disabled=true; btn.style.opacity=.6; btn.textContent='⏳ 生成中…';
+  st.textContent='AI 正在为这位买家定制开发信…';
+  fetch('/lead/'+LEAD_ID+'/ai-email',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tone:document.getElementById('aiTone').value,
+                         length:document.getElementById('aiLength').value,
+                         lang:document.getElementById('aiLang').value})
+  }).then(r=>r.json()).then(d=>{
+    if(d.ok){
+      document.getElementById('mailSubject').value=d.subject||'';
+      document.getElementById('mailBody').value=d.body||'';
+      st.textContent='✅ 已生成（'+(d.lang||'en')+'），可直接编辑后发送';
+      toast('AI 开发信已生成','ok');
+    } else { st.textContent='❌ '+(d.error||'生成失败'); }
+  }).catch(()=>{ st.textContent='❌ 网络错误'; })
+    .finally(()=>{ btn.disabled=false; btn.style.opacity=1; btn.textContent=old; });
+}
 
 // ── 发开发信 ──
 function applyTpl(){
