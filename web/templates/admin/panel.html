@@ -130,6 +130,53 @@ tr:hover td{background:#243349}
     </div>
   </div>
 
+  <!-- 优惠券 -->
+  <div class="card" style="margin-bottom:28px">
+    <div class="card-header">
+      <h2>🎟️ 优惠券</h2>
+      <button class="btn-sm btn-green" type="button" onclick="toggleBox('couponBox')">+ 新建优惠券</button>
+    </div>
+    <div id="couponBox" class="addbox" style="display:none">
+      <form method="POST" action="/admin/coupon/create">
+        <div class="fld"><label>类型</label>
+          <select class="inp" name="type">
+            <option value="amount">减面额（元）</option>
+            <option value="percent">打折（%）</option>
+          </select>
+        </div>
+        <div class="fld"><label>面额 / 折扣值</label><input class="inp" name="value" required placeholder="如 50（减50元）或 20（打8折填20）"></div>
+        <div class="fld"><label>可用次数</label><input class="inp" name="max_uses" value="0" placeholder="0=长期无限，1=用一次作废"></div>
+        <div class="fld"><label>有效期至（可空=永久）</label><input class="inp" name="expires_at" type="date"></div>
+        <div class="fld"><label>自定义码（可空=随机）</label><input class="inp" name="code" placeholder="留空自动生成"></div>
+        <div class="fld"><label>备注</label><input class="inp" name="note" placeholder="如：双十一活动"></div>
+        <button class="btn-sm btn-green" type="submit">创建</button>
+      </form>
+      <div style="font-size:12px;color:#64748b;margin-top:10px">💡 减面额=订单减 N 元（≥订单金额则免费开通）；打折填折扣百分比（打8折填 20）。次数填 0 长期用、填 1 用一次即作废。</div>
+    </div>
+    <table>
+      <thead><tr><th>券码</th><th>优惠</th><th>已用/上限</th><th>有效期</th><th>状态</th><th>备注</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for c in coupons %}
+        <tr>
+          <td style="font-family:monospace;color:#93c5fd;font-weight:600">{{ c.code }}</td>
+          <td>{% if c.type == 'percent' %}打 {{ (c.value/10)|round(1) }} 折{% else %}减 ¥{{ c.value|int }}{% endif %}</td>
+          <td>{{ c.used_count }} / {{ '∞' if not c.max_uses else c.max_uses }}</td>
+          <td style="color:#64748b;font-size:12px">{{ c.expires_at or '永久' }}</td>
+          <td>{% if c.status == 'active' %}<span class="badge badge-active">可用</span>{% else %}<span class="badge badge-suspended">停用</span>{% endif %}</td>
+          <td style="color:#64748b;font-size:12px">{{ c.note or '—' }}</td>
+          <td>
+            <form method="POST" action="/admin/coupon/{{ c.code }}/delete" style="display:inline">
+              <button class="btn-sm btn-red" type="submit" onclick="return confirm('删除优惠券 {{ c.code }}？')">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" style="text-align:center;color:#475569;padding:30px">还没有优惠券</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
   <!-- 客户列表 -->
   <div class="card">
     <div class="card-header">

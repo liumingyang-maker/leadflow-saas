@@ -1287,6 +1287,35 @@ def _pay_base() -> str:
     return _public_base()
 
 
+def _coupon_discount(coupon: dict, amount: float):
+    """按券算抵扣，返回 (抵扣额, 实付额)。抵扣不超过订单金额。"""
+    if (coupon.get("type") or "amount") == "percent":
+        disc = amount * float(coupon.get("value") or 0) / 100.0
+    else:
+        disc = float(coupon.get("value") or 0)
+    disc = min(round(disc, 2), amount)
+    final = round(amount - disc, 2)
+    if 0 < final < 0.01:                 # 虎皮椒最低 ¥0.01
+        final = 0.01
+    return round(disc, 2), final
+
+
+@app.route("/pay/coupon-check", methods=["POST"])
+@onboarding_required
+def pay_coupon_check():
+    data = request.get_json(silent=True) or {}
+    spec = PLAN_PRICES.get(((data.get("plan") or "").lower(),
+                            (data.get("period") or "").lower()))
+    if not spec:
+        return jsonify({"ok": False, "error": "套餐无效"}), 400
+    v = admin_db.validate_coupon(data.get("coupon", ""))
+    if not v["ok"]:
+        return jsonify({"ok": False, "error": v["error"]}), 400
+    disc, final = _coupon_discount(v["coupon"], spec["amount"])
+    return jsonify({"ok": True, "original": spec["amount"],
+                    "discount": disc, "final": final, "free": final <= 0})
+
+
 @app.route("/upgrade")
 @onboarding_required
 def upgrade_page():
@@ -1325,14 +1354,34 @@ def pay_create():
     spec = PLAN_PRICES.get((plan, period))
     if not spec:
         return jsonify({"ok": False, "error": "套餐无效"}), 400
+
+    # 优惠券（可选）：服务端校验 + 算抵扣后金额
+    amount      = spec["amount"]
+    coupon_code = (data.get("coupon") or "").strip().upper()
+    if coupon_code:
+        v = admin_db.validate_coupon(coupon_code)
+        if not v["ok"]:
+            return jsonify({"ok": False, "error": v["error"]}), 400
+        _disc, amount = _coupon_discount(v["coupon"], amount)
+
+    # 100% 抵扣（券面额≥订单金额）→ 直接开通，不走支付
+    if coupon_code and amount <= 0:
+        order_id = admin_db.create_order(tid, plan, period, spec["months"], 0,
+                                         coupon_code=coupon_code)
+        if admin_db.mark_order_paid(order_id, "coupon-free"):
+            admin_db.upgrade_tenant_plan(tid, plan, spec["months"])
+            admin_db.consume_coupon(coupon_code)
+        return jsonify({"ok": True, "free": True, "order_id": order_id})
+
     try:
         from payment import create_order as pay_create_order, is_configured
         if not is_configured():
             return jsonify({"ok": False, "error": "平台尚未开通自助支付，请联系客服开通"}), 400
-        order_id = admin_db.create_order(tid, plan, period, spec["months"], spec["amount"])
+        order_id = admin_db.create_order(tid, plan, period, spec["months"], amount,
+                                         coupon_code=coupon_code)
         base = _pay_base()
         res = pay_create_order(
-            order_id, spec["amount"],
+            order_id, amount,
             title=f"外贸雷达 {spec['label']}",
             notify_url=f"{base}/pay/notify/xunhupay",
             return_url=f"{base}/pay/return?order_id={order_id}")
@@ -1342,7 +1391,7 @@ def pay_create():
         return jsonify({"ok": False, "error": res.get("error", "下单失败")}), 400
     return jsonify({"ok": True, "order_id": order_id,
                     "qrcode": res.get("qrcode"), "url": res.get("url"),
-                    "amount": spec["amount"], "label": spec["label"]})
+                    "amount": amount, "label": spec["label"]})
 
 
 @app.route("/pay/status/<order_id>")
@@ -1377,6 +1426,11 @@ def pay_notify(provider):
             except Exception:
                 pass
             admin_db.upgrade_tenant_plan(order["tenant_id"], order["plan"], order["months"])
+            if order.get("coupon_code"):        # 支付成功才核销优惠券（避免下单不付白烧券）
+                try:
+                    admin_db.consume_coupon(order["coupon_code"])
+                except Exception:
+                    pass
             print(f"[pay] 开通成功 order={order_id} tenant={order['tenant_id']} {order['plan']} x{order['months']}月")
     except Exception as e:
         print(f"[pay] 回调处理异常: {e}")
@@ -2309,8 +2363,13 @@ def admin_panel():
     tenants = admin_db.all_tenants()
     # 每个租户的「有效档位」（plan 明确就用它，否则按 status 推：active→pro / trial / suspended）
     tiers = {t["id"]: tenant_tier(t["id"]) for t in tenants}
+    try:
+        coupons = admin_db.list_coupons()
+    except Exception:
+        coupons = []
     return render_template("admin/panel.html",
-                           tenants=tenants, serper=serper, tiers=tiers)
+                           tenants=tenants, serper=serper, tiers=tiers,
+                           coupons=coupons)
 
 
 @app.route("/admin/mail-test", methods=["POST"])
@@ -2368,6 +2427,29 @@ def admin_set_plan(tid):
     label = {"free": "免费版", "pro": "专业版", "ultra": "旗舰版",
              "basic": "按状态自动"}[plan]
     flash(f"✅ 套餐已设为「{label}」")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/coupon/create", methods=["POST"])
+@admin_required
+def admin_coupon_create():
+    r = admin_db.create_coupon(
+        ctype=request.form.get("type", "amount"),
+        value=request.form.get("value", "0"),
+        max_uses=request.form.get("max_uses", "0"),
+        expires_at=request.form.get("expires_at", "").strip()[:10],
+        note=request.form.get("note", "").strip()[:100],
+        code=request.form.get("code", "").strip()[:32])
+    flash(f"✅ 优惠券已创建：{r['code']}" if r.get("ok")
+          else f"创建失败：{r.get('error')}")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/coupon/<code>/delete", methods=["POST"])
+@admin_required
+def admin_coupon_delete(code):
+    admin_db.delete_coupon(code)
+    flash("🗑️ 优惠券已删除")
     return redirect(url_for("admin_panel"))
 
 

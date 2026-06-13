@@ -37,6 +37,14 @@
     <span id="lblYear" style="font-size:14px;color:var(--muted)">年付 <span style="color:#16a34a;font-weight:700">省 2 个月</span></span>
   </div>
 
+  <!-- 优惠券 -->
+  {% if pay_on %}
+  <div style="max-width:360px;margin:0 auto 18px">
+    <input id="couponInput" placeholder="有优惠券？输入券码（下单时自动抵扣）"
+           style="width:100%;padding:9px 12px;border:1px solid var(--border-strong);border-radius:8px;font-size:13px;text-transform:uppercase;text-align:center">
+  </div>
+  {% endif %}
+
   <!-- 套餐卡 -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
     {% for p in buy_plans %}
@@ -103,12 +111,15 @@ function switchPeriod(){
 }
 var _poll=null;
 function buy(btn, plan){
+  var ci=document.getElementById('couponInput');
+  var coupon=ci ? (ci.value||'').trim().toUpperCase() : '';
   var old=btn.textContent; btn.disabled=true; btn.textContent='下单中…';
   fetch('/pay/create',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({plan:plan, period:period})
+    body:JSON.stringify({plan:plan, period:period, coupon:coupon})
   }).then(r=>r.json()).then(d=>{
     btn.disabled=false; btn.textContent=old;
     if(!d.ok){ toast(d.error||'下单失败','err'); return; }
+    if(d.free){ toast('🎉 优惠券已全额抵扣，会员已开通！','ok'); setTimeout(function(){location.href='/workbench';},1300); return; }
     showPay(d);
   }).catch(()=>{ btn.disabled=false; btn.textContent=old; toast('网络错误','err'); });
 }

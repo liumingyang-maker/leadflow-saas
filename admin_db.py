@@ -153,12 +153,26 @@ def init():
                 plan         TEXT NOT NULL,        -- pro/ultra
                 period       TEXT NOT NULL,        -- month/year
                 months       INTEGER NOT NULL,
-                amount_cny   REAL NOT NULL,
+                amount_cny   REAL NOT NULL,        -- 抵扣后实付金额
+                coupon_code  TEXT DEFAULT '',      -- 用的优惠券码（支付成功后核销）
                 status       TEXT DEFAULT 'pending', -- pending/paid
                 provider     TEXT DEFAULT 'xunhupay',
                 provider_txn TEXT DEFAULT '',
                 created_at   TEXT,
                 paid_at      TEXT
+            );
+
+            -- 优惠券（后台生成，付款时抵扣）
+            CREATE TABLE IF NOT EXISTS coupons (
+                code        TEXT PRIMARY KEY,
+                type        TEXT DEFAULT 'amount',  -- amount(减N元) / percent(打N折,value=0-100)
+                value       REAL DEFAULT 0,
+                max_uses    INTEGER DEFAULT 0,      -- 0=长期无限；1=用一次作废；N=限N次
+                used_count  INTEGER DEFAULT 0,
+                expires_at  TEXT DEFAULT '',        -- 空=永久；否则 YYYY-MM-DD
+                status      TEXT DEFAULT 'active',  -- active/disabled
+                note        TEXT DEFAULT '',
+                created_at  TEXT
             );
         """)
         try:
@@ -174,6 +188,11 @@ def init():
         # 老库补 plan_expires_at 列（付费套餐到期日；trial_ends 是试用到期，两者分开）
         try:
             conn.execute("ALTER TABLE tenants ADD COLUMN plan_expires_at TEXT")
+        except Exception:
+            pass
+        # 老库补 orders.coupon_code 列（优惠券核销用）
+        try:
+            conn.execute("ALTER TABLE orders ADD COLUMN coupon_code TEXT DEFAULT ''")
         except Exception:
             pass
     _ensure_admin()
@@ -704,13 +723,16 @@ def _add_months(dt: datetime, months: int) -> datetime:
 
 
 def create_order(tenant_id: str, plan: str, period: str, months: int,
-                 amount_cny: float, provider: str = "xunhupay") -> str:
+                 amount_cny: float, provider: str = "xunhupay",
+                 coupon_code: str = "") -> str:
     order_id = "LF" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:6]
     with get_conn() as conn:
         conn.execute("""INSERT INTO orders
-            (order_id, tenant_id, plan, period, months, amount_cny, status, provider, created_at)
-            VALUES (?,?,?,?,?,?, 'pending', ?, ?)""",
-            (order_id, tenant_id, plan, period, months, amount_cny, provider, _now()))
+            (order_id, tenant_id, plan, period, months, amount_cny, coupon_code,
+             status, provider, created_at)
+            VALUES (?,?,?,?,?,?,?, 'pending', ?, ?)""",
+            (order_id, tenant_id, plan, period, months, amount_cny,
+             coupon_code or "", provider, _now()))
     return order_id
 
 
@@ -752,6 +774,95 @@ def upgrade_tenant_plan(tenant_id: str, plan: str, months: int) -> str:
         conn.execute("UPDATE tenants SET plan=?, status='active', plan_expires_at=? WHERE id=?",
                      (plan, new_expiry, tenant_id))
     return new_expiry
+
+
+# ── 优惠券 ──────────────────────────────────────────────────
+
+def _gen_coupon_code(n: int = 8) -> str:
+    import random
+    chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # 去掉易混淆 0O1I
+    return "".join(random.choices(chars, k=n))
+
+
+def create_coupon(ctype: str, value, max_uses=0, expires_at: str = "",
+                  note: str = "", code: str = "") -> dict:
+    code = (code or "").strip().upper()
+    if not code:
+        code = _gen_coupon_code()
+    ctype = ctype if ctype in ("amount", "percent") else "amount"
+    try:
+        value = float(value)
+    except Exception:
+        value = 0
+    try:
+        max_uses = max(0, int(max_uses))
+    except Exception:
+        max_uses = 0
+    if value <= 0:
+        return {"ok": False, "error": "面额/折扣必须大于 0"}
+    if ctype == "percent" and value >= 100:
+        return {"ok": False, "error": "折扣百分比应小于 100"}
+    with get_conn() as conn:
+        if conn.execute("SELECT 1 FROM coupons WHERE code=?", (code,)).fetchone():
+            return {"ok": False, "error": "该优惠券码已存在"}
+        conn.execute("""INSERT INTO coupons
+            (code, type, value, max_uses, used_count, expires_at, status, note, created_at)
+            VALUES (?,?,?,?,0,?, 'active', ?, ?)""",
+            (code, ctype, value, max_uses, (expires_at or "").strip(),
+             (note or "")[:100], _now()))
+    return {"ok": True, "code": code}
+
+
+def get_coupon(code: str) -> dict:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM coupons WHERE code=?",
+                           ((code or "").strip().upper(),)).fetchone()
+    return dict(row) if row else {}
+
+
+def list_coupons(limit: int = 200) -> list:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM coupons ORDER BY created_at DESC LIMIT ?",
+                           (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_coupon(code: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM coupons WHERE code=?", ((code or "").strip().upper(),))
+
+
+def validate_coupon(code: str) -> dict:
+    """校验券是否可用。返回 {ok, coupon|None, error}。"""
+    c = get_coupon(code)
+    if not c:
+        return {"ok": False, "error": "优惠券不存在"}
+    if c.get("status") != "active":
+        return {"ok": False, "error": "优惠券已停用"}
+    exp = (c.get("expires_at") or "").strip()
+    if exp and exp < datetime.now(timezone.utc).strftime("%Y-%m-%d"):
+        return {"ok": False, "error": "优惠券已过期"}
+    mu = c.get("max_uses") or 0
+    if mu > 0 and (c.get("used_count") or 0) >= mu:
+        return {"ok": False, "error": "优惠券已用完"}
+    return {"ok": True, "coupon": c}
+
+
+def consume_coupon(code: str) -> None:
+    """核销一次：used_count+1；达到上限（max_uses>0 且用满）→ 自动停用（一次性券即作废）。"""
+    code = (code or "").strip().upper()
+    if not code:
+        return
+    with get_conn() as conn:
+        row = conn.execute("SELECT max_uses, used_count FROM coupons WHERE code=?",
+                           (code,)).fetchone()
+        if not row:
+            return
+        used = (row["used_count"] or 0) + 1
+        mu = row["max_uses"] or 0
+        new_status = "disabled" if (mu > 0 and used >= mu) else "active"
+        conn.execute("UPDATE coupons SET used_count=?, status=? WHERE code=?",
+                     (used, new_status, code))
 
 
 # ── API 本地用量计数（Serper 等无余额接口的服务）────────────
