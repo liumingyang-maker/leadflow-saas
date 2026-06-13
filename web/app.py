@@ -2098,8 +2098,6 @@ def settings():
             v = request.form.get(k, "").strip()
             if v.isdigit():
                 cfg[k] = int(v)
-        cfg["ai_enabled"]    = request.form.get("AI_ENABLED") == "on"
-        cfg["email_ai_mode"] = request.form.get("EMAIL_AI_MODE") == "on"
         tenant_ctx.save_config(tid, cfg)
         session["company_name"] = cfg.get("company_name", "")
         saved = True

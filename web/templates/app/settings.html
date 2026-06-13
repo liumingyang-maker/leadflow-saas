@@ -230,35 +230,16 @@ renderI18n(ppI18nData);
 
 <form method="POST">
 
-  <!-- AI 总开关 -->
-  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px 20px;margin-bottom:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:15px;font-weight:600">🤖 AI 功能</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:3px">
-          关闭时使用规则评分 + 固定邮件模板，完全免费
-        </div>
-      </div>
-      <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer">
-        <input type="checkbox" name="AI_ENABLED" id="aiToggle"
-               {% if cfg.ai_enabled %}checked{% endif %}
-               onchange="
-                 var on=this.checked;
-                 document.getElementById('aiBox').style.display=on?'':'none';
-                 document.getElementById('aiSliderBg').style.background=on?'#2563eb':'#d1d5db';
-                 document.getElementById('aiSliderDot').style.transform=on?'translateX(22px)':'translateX(2px)';
-               "
-               style="opacity:0;width:0;height:0;position:absolute">
-        <span id="aiSliderBg" style="position:absolute;inset:0;border-radius:26px;transition:.3s;
-              background:{% if cfg.ai_enabled %}#2563eb{% else %}#d1d5db{% endif %}"></span>
-        <span id="aiSliderDot" style="position:absolute;top:3px;width:20px;height:20px;background:#fff;
-              border-radius:50%;transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.3);
-              transform:{% if cfg.ai_enabled %}translateX(25px){% else %}translateX(3px){% endif %}"></span>
-      </label>
+  <!-- AI（平台已内置，零配置即用）-->
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 18px;margin-bottom:14px">
+    <div style="font-size:15px;font-weight:600;color:#1e40af">🤖 AI 已为你内置</div>
+    <div style="font-size:12px;color:#1e40af;margin-top:3px;opacity:.85">
+      开发信生成 · 客户评分 · 翻译 · 搜索解析均由平台提供，开箱即用、无需任何配置。
+      下面的 Key 只有想用自己账号（不占平台额度）时才需要填。
     </div>
   </div>
 
-  <div id="aiBox" style="{{ '' if cfg.ai_enabled else 'display:none' }}">
+  <div>
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px 20px;margin-bottom:14px">
       <div style="font-weight:600;margin-bottom:4px">⚡ DeepSeek API Key
         <span style="font-size:11px;font-weight:400;color:#16a34a;margin-left:6px">留空 = 用平台额度（推荐）</span>

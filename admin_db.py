@@ -265,8 +265,7 @@ def _init_tenant_config(tid: str):
             "smtp_user": "", "smtp_pass": "",
             "importyeti_api_key": "", "serpapi_key": "",
             "hunter_api_key": "", "deepseek_api_key": "",
-            "anthropic_api_key": "", "ai_enabled": False,
-            "email_ai_mode": False, "email_from_name": "",
+            "anthropic_api_key": "", "email_from_name": "",
             "email_signature": "", "sender_name": "",
             "onboarding_step": 0,
         }

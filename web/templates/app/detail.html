@@ -130,38 +130,46 @@
       ⚠️ 还没配置发信通道，去 <a href="/settings" style="color:#2563eb">设置 → 给买家发开发信</a> 填好后才能发送。
     </div>
     {% endif %}
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:10px">收件人：{{ lead.email or '（无邮箱，请先一键找邮箱）' }}</div>
+
+    <!-- AI 写开发信（主操作）-->
+    <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:600;color:#6b21a8;margin-bottom:8px">🪄 AI 写开发信
+        <span style="font-weight:400;color:#9333ea">— 按该买家的国家/行业实时生成个性化开发信（推荐）</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button id="btnAiWrite" onclick="aiWriteEmail(this)"
+                style="padding:7px 14px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">🪄 生成开发信</button>
+        <select id="aiTone" style="padding:6px 8px;border:1px solid #d8b4fe;border-radius:6px;font-size:12px">
+          <option value="professional">专业稳重</option>
+          <option value="concise">简短直接</option>
+        </select>
+        <select id="aiLength" style="padding:6px 8px;border:1px solid #d8b4fe;border-radius:6px;font-size:12px">
+          <option value="medium">适中</option>
+          <option value="short">简短</option>
+        </select>
+        <select id="aiLang" style="padding:6px 8px;border:1px solid #d8b4fe;border-radius:6px;font-size:12px">
+          <option value="">自动（按买家国家）</option>
+          <option value="en">英语</option>
+          <option value="fr">法语</option>
+          <option value="es">西班牙语</option>
+          <option value="pt">葡萄牙语</option>
+          <option value="ar">阿拉伯语</option>
+        </select>
+        <span id="aiWriteStatus" style="font-size:12px;color:#7c3aed"></span>
+      </div>
+    </div>
+
+    <!-- 或：套用固定模板（可选）-->
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-      <label style="font-size:13px;color:#6b7280">选模板</label>
+      <label style="font-size:13px;color:#6b7280">或套用固定模板</label>
       <select id="tplPick" onchange="applyTpl()"
               style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        <option value="">— 选择模板 —</option>
         {% for key, t in templates.items() %}
         <option value="{{ key }}">{{ t.display_name }}</option>
         {% endfor %}
       </select>
-      <span style="font-size:12px;color:#9ca3af">收件人：{{ lead.email or '（无邮箱，请先一键找邮箱）' }}</span>
-    </div>
-
-    <!-- AI 写开发信 -->
-    <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button id="btnAiWrite" onclick="aiWriteEmail(this)"
-              style="padding:7px 14px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">🪄 AI 写开发信</button>
-      <select id="aiTone" style="padding:6px 8px;border:1px solid #d8b4fe;border-radius:6px;font-size:12px">
-        <option value="professional">专业稳重</option>
-        <option value="concise">简短直接</option>
-      </select>
-      <select id="aiLength" style="padding:6px 8px;border:1px solid #d8b4fe;border-radius:6px;font-size:12px">
-        <option value="medium">适中</option>
-        <option value="short">简短</option>
-      </select>
-      <select id="aiLang" style="padding:6px 8px;border:1px solid #d8b4fe;border-radius:6px;font-size:12px">
-        <option value="">自动（按买家国家）</option>
-        <option value="en">英语</option>
-        <option value="fr">法语</option>
-        <option value="es">西班牙语</option>
-        <option value="pt">葡萄牙语</option>
-        <option value="ar">阿拉伯语</option>
-      </select>
-      <span id="aiWriteStatus" style="font-size:12px;color:#7c3aed"></span>
     </div>
 
     <input id="mailSubject" placeholder="邮件主题"
@@ -392,8 +400,6 @@ function sendWhatsAppApi(btn){
     .finally(()=>{ btn.disabled=false; btn.style.opacity=1; btn.textContent=old; });
 }
 
-// 初始化：默认套用第一个模板
-document.addEventListener('DOMContentLoaded', applyTpl);
 
 function runTool(kind, btn){
   const panel = document.getElementById('toolResult');

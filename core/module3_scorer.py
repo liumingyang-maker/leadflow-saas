@@ -28,9 +28,23 @@ from compat import logger, cfg
 
 class Scorer:
 
-    def __init__(self):
+    def __init__(self, db_path: str = None):
         # Claude 客户端（懒加载，没有API key时不报错）
         self._client: Optional[anthropic.Anthropic] = None
+        # 租户数据库路径（SaaS 多租户模式必传；不传则回退旧版全局 db，仅供测试）
+        self._db_path = db_path
+
+    def _resolve_db(self):
+        """按 db_path 解析租户专属数据库实例（与 module2_cleaner 同款约定）。"""
+        if self._db_path:
+            from database import Database
+            _db = Database(db_path=self._db_path)
+            _db.init()
+            return _db
+        try:
+            return db   # 旧版单用户全局对象（向后兼容，仅 __main__ 测试用）
+        except NameError:
+            raise RuntimeError("Scorer 需要传入 db_path 参数（SaaS 多租户模式）")
 
     @property
     def client(self) -> Optional[anthropic.Anthropic]:
@@ -49,14 +63,15 @@ class Scorer:
         """
         if count is None:
             return 5   # 无数据给少量分，不完全归零
+        # 兼容两套键名：旧版 config 用 "10+/5-9/1-4/0"，compat._SafeCfg 用 very_high/high/medium/low/none
         rules = cfg.SCORE_RULES["import_frequency"]
         if count >= 10:
-            return rules["10+"]
+            return rules.get("10+", rules.get("very_high", 20))
         elif count >= 5:
-            return rules["5-9"]
+            return rules.get("5-9", rules.get("high", 15))
         elif count >= 1:
-            return rules["1-4"]
-        return rules["0"]
+            return rules.get("1-4", rules.get("medium", 10))
+        return rules.get("0", rules.get("none", 0))
 
     def score_product_match(self, hs_codes: Optional[list]) -> int:
         """
@@ -281,12 +296,14 @@ HS编码：{lead.get('hs_codes') or '无记录'}
             "errors": 失败数,
         }
         """
+        _db = self._resolve_db()
+
         # 获取待评分leads
         if lead_ids:
-            leads = [db.get_lead(lid) for lid in lead_ids]
+            leads = [_db.get_lead(lid) for lid in lead_ids]
             leads = [l for l in leads if l]  # 过滤None
         else:
-            leads = db.get_leads_for_scoring()
+            leads = _db.get_leads_for_scoring()
 
         if not leads:
             logger.info("没有待评分的leads")
@@ -318,7 +335,7 @@ HS编码：{lead.get('hs_codes') or '无记录'}
                 result = self.score_one(lead, use_ai=use_ai)
 
                 # 写回数据库
-                db.update_lead_score(
+                _db.update_lead_score(
                     lead_id=result["lead_id"],
                     rule_score=result["rule_score"],
                     ai_adjustment=result["ai_score_adjustment"],
@@ -372,6 +389,9 @@ HS编码：{lead.get('hs_codes') or '无记录'}
 
 # 单例
 scorer = Scorer()
+
+# app.py 里用 LeadScorer(db_path=...) 导入，保持兼容（同 module2_cleaner 的 DataCleaner=Cleaner）
+LeadScorer = Scorer
 
 
 # ─────────────────────────────────────────
