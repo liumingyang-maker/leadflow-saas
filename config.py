@@ -41,3 +41,10 @@ SITE_URL = os.environ.get("SITE_URL", "http://127.0.0.1:5001").rstrip("/")
 # SERPER_MASTER_KEYS 可填多个，逗号分隔（自动容错轮换）。不填则不启用平台代付。
 DEEPSEEK_MASTER_KEY = os.environ.get("DEEPSEEK_MASTER_KEY", "")
 SERPER_MASTER_KEYS  = os.environ.get("SERPER_MASTER_KEYS", "")
+
+# ── 自助支付：虎皮椒个人聚合支付（微信/支付宝，钱落内地）─────────────
+# 平台级商户凭据（不是每租户）。未配置则升级页回退"联系客服"，不影响其它功能。
+# 在虎皮椒后台拿 APPID + APPSECRET；回调用公网 SITE_URL。
+XUNHUPAY_APPID   = os.environ.get("XUNHUPAY_APPID", "")
+XUNHUPAY_SECRET  = os.environ.get("XUNHUPAY_SECRET", "")
+XUNHUPAY_GATEWAY = os.environ.get("XUNHUPAY_GATEWAY", "https://api.xunhupay.com/payment/do.html")

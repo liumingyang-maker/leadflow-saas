@@ -269,6 +269,14 @@ PRICING_PLANS = [
     },
 ]
 
+# 付费套餐金额（服务端唯一事实来源，绝不信前端传金额）。年付=10个月价（送2月）。
+PLAN_PRICES = {
+    ("pro",   "month"): {"months": 1,  "amount": 99,   "label": "专业版 · 月付"},
+    ("pro",   "year"):  {"months": 12, "amount": 990,  "label": "专业版 · 年付（省 2 个月）"},
+    ("ultra", "month"): {"months": 1,  "amount": 199,  "label": "旗舰版 · 月付"},
+    ("ultra", "year"):  {"months": 12, "amount": 1990, "label": "旗舰版 · 年付（省 2 个月）"},
+}
+
 
 def _wa_api_ready(cfg: dict) -> bool:
     """该租户是否已配好 WhatsApp 官方 API（A 方案）。"""
@@ -1260,6 +1268,128 @@ def deliverability_unsuppress():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────
+# 自助支付（虎皮椒个人聚合：扫微信/支付宝付款，钱落内地）
+# 卖固定周期、手动续。金额服务端定死；只在回调验签后开通。
+# ─────────────────────────────────────────────────────────
+
+def _pay_base() -> str:
+    """支付回调/跳转用的公网前缀：优先 config.SITE_URL（回调要公网可达），兜底当前请求域名。"""
+    try:
+        import config
+        b = (getattr(config, "SITE_URL", "") or "").rstrip("/")
+        if b and not b.startswith("http://127.") and "localhost" not in b:
+            return b
+    except Exception:
+        pass
+    return _public_base()
+
+
+@app.route("/upgrade")
+@onboarding_required
+def upgrade_page():
+    tid = current_tid()
+    from api_platform import tenant_tier
+    try:
+        from payment import is_configured as pay_ready
+        pay_on = pay_ready()
+    except Exception:
+        pay_on = False
+    t = admin_db.get_tenant(tid) or {}
+    feats = {p["id"]: p["features"] for p in PRICING_PLANS}
+    buy_plans = [
+        {"id": "pro",   "name": "专业版", "highlight": True,
+         "month": PLAN_PRICES[("pro", "month")]["amount"],
+         "year":  PLAN_PRICES[("pro", "year")]["amount"],
+         "features": feats.get("pro", [])},
+        {"id": "ultra", "name": "旗舰版", "highlight": False,
+         "month": PLAN_PRICES[("ultra", "month")]["amount"],
+         "year":  PLAN_PRICES[("ultra", "year")]["amount"],
+         "features": feats.get("ultra", [])},
+    ]
+    return render_template("app/upgrade.html", cfg=current_cfg(),
+                           tier=tenant_tier(tid),
+                           plan_expires_at=t.get("plan_expires_at"),
+                           buy_plans=buy_plans, pay_on=pay_on)
+
+
+@app.route("/pay/create", methods=["POST"])
+@onboarding_required
+def pay_create():
+    tid  = current_tid()
+    data = request.get_json(silent=True) or {}
+    plan   = (data.get("plan") or "").lower()
+    period = (data.get("period") or "").lower()
+    spec = PLAN_PRICES.get((plan, period))
+    if not spec:
+        return jsonify({"ok": False, "error": "套餐无效"}), 400
+    try:
+        from payment import create_order as pay_create_order, is_configured
+        if not is_configured():
+            return jsonify({"ok": False, "error": "平台尚未开通自助支付，请联系客服开通"}), 400
+        order_id = admin_db.create_order(tid, plan, period, spec["months"], spec["amount"])
+        base = _pay_base()
+        res = pay_create_order(
+            order_id, spec["amount"],
+            title=f"外贸雷达 {spec['label']}",
+            notify_url=f"{base}/pay/notify/xunhupay",
+            return_url=f"{base}/pay/return?order_id={order_id}")
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"下单失败：{e}"}), 500
+    if not res.get("ok"):
+        return jsonify({"ok": False, "error": res.get("error", "下单失败")}), 400
+    return jsonify({"ok": True, "order_id": order_id,
+                    "qrcode": res.get("qrcode"), "url": res.get("url"),
+                    "amount": spec["amount"], "label": spec["label"]})
+
+
+@app.route("/pay/status/<order_id>")
+@onboarding_required
+def pay_status(order_id):
+    o = admin_db.get_order(order_id)
+    if not o or o.get("tenant_id") != current_tid():
+        return jsonify({"ok": False, "error": "订单不存在"}), 404
+    return jsonify({"ok": True, "status": o.get("status", "pending")})
+
+
+@app.route("/pay/notify/<provider>", methods=["POST", "GET"])
+def pay_notify(provider):
+    """支付渠道异步回调（公开）。验签通过且已支付 → 幂等开通账号。"""
+    params = request.form.to_dict() or request.args.to_dict()
+    try:
+        from payment import verify_notify, notify_is_paid
+        if not verify_notify(params):
+            print("[pay] 回调验签失败")
+            return "fail", 400
+        if not notify_is_paid(params):
+            return "success"        # 非成功状态也回 success 避免重复推送
+        order_id = params.get("trade_order_id", "")
+        order = admin_db.mark_order_paid(order_id, params.get("transaction_id", ""))
+        if order:                   # 仅首次 pending→paid 才开通（幂等）
+            # 二次校验金额，防篡改
+            try:
+                paid = float(params.get("total_fee") or 0)
+                if abs(paid - float(order["amount_cny"])) > 0.01:
+                    print(f"[pay] 金额不符 order={order_id} 期望{order['amount_cny']} 实付{paid}")
+                    return "success"
+            except Exception:
+                pass
+            admin_db.upgrade_tenant_plan(order["tenant_id"], order["plan"], order["months"])
+            print(f"[pay] 开通成功 order={order_id} tenant={order['tenant_id']} {order['plan']} x{order['months']}月")
+    except Exception as e:
+        print(f"[pay] 回调处理异常: {e}")
+        return "fail", 500
+    return "success"
+
+
+@app.route("/pay/return")
+@onboarding_required
+def pay_return():
+    """用户付款后浏览器跳回页（不在这里开通，只展示+轮询，真正开通靠 notify）。"""
+    order_id = request.args.get("order_id", "")
+    return render_template("app/pay_return.html", order_id=order_id)
 
 
 # ─────────────────────────────────────────────────────────

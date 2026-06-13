@@ -1,0 +1,142 @@
+{% extends "app/base.html" %}
+{% block title %}开通会员{% endblock %}
+{% block page_title %}开通 / 升级会员{% endblock %}
+{% block content %}
+<div style="max-width:820px">
+
+  <!-- 当前状态 -->
+  <div class="card card-pad" style="margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:13px;color:var(--muted)">当前套餐</div>
+      <div style="font-size:20px;font-weight:800">
+        {{ {'free':'免费版','trial':'试用版','pro':'专业版 Pro','ultra':'旗舰版 Ultra','suspended':'已暂停'}.get(tier, tier) }}
+      </div>
+    </div>
+    {% if plan_expires_at %}
+    <div style="text-align:right">
+      <div style="font-size:13px;color:var(--muted)">到期时间</div>
+      <div style="font-size:15px;font-weight:600">{{ plan_expires_at[:10] }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not pay_on %}
+  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:14px 18px;font-size:13px;color:#92400e;margin-bottom:18px">
+    ⚠️ 在线支付正在开通中。开通会员请<b>联系客服</b>，付款后我们为你手动激活。
+  </div>
+  {% endif %}
+
+  <!-- 月付/年付切换 -->
+  <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:18px">
+    <span id="lblMonth" style="font-size:14px;font-weight:600">月付</span>
+    <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer">
+      <input type="checkbox" id="periodToggle" onchange="switchPeriod()" style="opacity:0;width:0;height:0">
+      <span id="pSlide" style="position:absolute;inset:0;background:#2563eb;border-radius:26px;transition:.2s"></span>
+      <span id="pDot" style="position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s"></span>
+    </label>
+    <span id="lblYear" style="font-size:14px;color:var(--muted)">年付 <span style="color:#16a34a;font-weight:700">省 2 个月</span></span>
+  </div>
+
+  <!-- 套餐卡 -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    {% for p in buy_plans %}
+    <div class="card card-pad" style="{{ 'border:2px solid var(--brand);' if p.highlight }}position:relative">
+      {% if p.highlight %}<div style="position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--brand);color:#fff;font-size:12px;font-weight:700;padding:3px 14px;border-radius:20px;white-space:nowrap">最受欢迎</div>{% endif %}
+      <div style="font-size:18px;font-weight:800">{{ p.name }}</div>
+      <div style="margin:10px 0 4px">
+        <span style="font-size:34px;font-weight:800;letter-spacing:-1px">¥<span class="price" data-month="{{ p.month }}" data-year="{{ p.year }}">{{ p.month }}</span></span>
+        <span class="per" style="font-size:13px;color:var(--muted)">/月</span>
+      </div>
+      <div class="yearhint" style="font-size:12px;color:#16a34a;min-height:16px"></div>
+      <ul style="list-style:none;margin:14px 0 18px;padding:0">
+        {% for f in p.features[:6] %}
+        <li style="font-size:13px;color:var(--ink2);padding:5px 0;display:flex;gap:8px"><span style="color:#16a34a">✓</span><span>{{ f }}</span></li>
+        {% endfor %}
+      </ul>
+      <button class="btn {{ 'btn-primary' if p.highlight else '' }}" data-plan="{{ p.id }}"
+              onclick="buy(this,'{{ p.id }}')" {{ 'disabled' if not pay_on }}
+              style="width:100%;padding:11px;font-weight:600;font-size:14px">
+        {{ '立即开通' if pay_on else '联系客服' }}
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p style="font-size:12px;color:var(--faint);margin-top:16px;text-align:center">
+    支付由虎皮椒提供，支持微信 / 支付宝扫码。卖固定周期、不自动续费，到期前会提醒你续。
+  </p>
+</div>
+
+<!-- 支付二维码弹窗 -->
+<div id="payModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;padding:28px;width:340px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div id="payTitle" style="font-size:16px;font-weight:700;margin-bottom:4px">扫码支付</div>
+    <div id="payAmount" style="font-size:13px;color:var(--muted);margin-bottom:14px"></div>
+    <div id="payQrBox" style="min-height:200px;display:flex;align-items:center;justify-content:center">
+      <span style="color:var(--muted);font-size:13px">生成二维码中…</span>
+    </div>
+    <div id="payHint" style="font-size:12px;color:var(--muted);margin-top:12px">用微信或支付宝扫码完成支付</div>
+    <div style="margin-top:16px;display:flex;gap:8px">
+      <a id="payOpenLink" href="#" target="_blank" class="btn btn-sm" style="flex:1;display:none">打开收银台</a>
+      <button class="btn btn-sm" style="flex:1" onclick="closePay()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var period = 'month';
+function switchPeriod(){
+  var on = document.getElementById('periodToggle').checked;
+  period = on ? 'year' : 'month';
+  document.getElementById('pDot').style.left = on ? '25px' : '3px';
+  document.getElementById('lblMonth').style.color = on ? 'var(--muted)' : '';
+  document.getElementById('lblMonth').style.fontWeight = on ? '400' : '600';
+  document.getElementById('lblYear').style.color = on ? '' : 'var(--muted)';
+  document.querySelectorAll('.card').forEach(function(card){
+    var pr=card.querySelector('.price'); if(!pr) return;
+    var per=card.querySelector('.per'); var yh=card.querySelector('.yearhint');
+    if(on){ var yr=pr.getAttribute('data-year');
+      pr.textContent=Math.round(yr/12); per.textContent='/月（年付 ¥'+yr+'）';
+      yh.textContent='一次付 ¥'+yr+'，相当于省 2 个月';
+    } else { pr.textContent=pr.getAttribute('data-month'); per.textContent='/月'; yh.textContent=''; }
+  });
+}
+var _poll=null;
+function buy(btn, plan){
+  var old=btn.textContent; btn.disabled=true; btn.textContent='下单中…';
+  fetch('/pay/create',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({plan:plan, period:period})
+  }).then(r=>r.json()).then(d=>{
+    btn.disabled=false; btn.textContent=old;
+    if(!d.ok){ toast(d.error||'下单失败','err'); return; }
+    showPay(d);
+  }).catch(()=>{ btn.disabled=false; btn.textContent=old; toast('网络错误','err'); });
+}
+function showPay(d){
+  document.getElementById('payModal').style.display='flex';
+  document.getElementById('payTitle').textContent='扫码支付 · '+(d.label||'');
+  document.getElementById('payAmount').textContent='应付 ¥'+d.amount;
+  var box=document.getElementById('payQrBox');
+  if(d.qrcode){ box.innerHTML='<img src="'+d.qrcode+'" style="width:200px;height:200px" alt="支付二维码">'; }
+  else { box.innerHTML='<span style="color:#6b7280;font-size:13px">请点下方「打开收银台」付款</span>'; }
+  var link=document.getElementById('payOpenLink');
+  if(d.url){ link.href=d.url; link.style.display='block'; } else { link.style.display='none'; }
+  // 轮询订单状态
+  if(_poll) clearInterval(_poll);
+  _poll=setInterval(function(){
+    fetch('/pay/status/'+d.order_id).then(r=>r.json()).then(s=>{
+      if(s.ok && s.status==='paid'){
+        clearInterval(_poll);
+        document.getElementById('payQrBox').innerHTML='<div style="font-size:42px">✅</div>';
+        document.getElementById('payHint').innerHTML='<b style="color:#16a34a">支付成功，会员已开通！</b>';
+        setTimeout(function(){ location.href='/workbench'; }, 1500);
+      }
+    });
+  }, 3000);
+}
+function closePay(){
+  document.getElementById('payModal').style.display='none';
+  if(_poll) clearInterval(_poll);
+}
+</script>
+{% endblock %}

@@ -145,6 +145,21 @@ def init():
                 count      INTEGER DEFAULT 0,
                 PRIMARY KEY (tenant_id, day)
             );
+
+            -- 自助支付订单（卖固定周期，手动续）
+            CREATE TABLE IF NOT EXISTS orders (
+                order_id     TEXT PRIMARY KEY,
+                tenant_id    TEXT NOT NULL,
+                plan         TEXT NOT NULL,        -- pro/ultra
+                period       TEXT NOT NULL,        -- month/year
+                months       INTEGER NOT NULL,
+                amount_cny   REAL NOT NULL,
+                status       TEXT DEFAULT 'pending', -- pending/paid
+                provider     TEXT DEFAULT 'xunhupay',
+                provider_txn TEXT DEFAULT '',
+                created_at   TEXT,
+                paid_at      TEXT
+            );
         """)
         try:
             conn.execute("ALTER TABLE tenants ADD COLUMN email_verified INTEGER DEFAULT 0")
@@ -154,6 +169,11 @@ def init():
         # 老库补 distributor_names 列（监控 diff 用，存上次经销商名单）
         try:
             conn.execute("ALTER TABLE competitors ADD COLUMN distributor_names TEXT DEFAULT ''")
+        except Exception:
+            pass
+        # 老库补 plan_expires_at 列（付费套餐到期日；trial_ends 是试用到期，两者分开）
+        try:
+            conn.execute("ALTER TABLE tenants ADD COLUMN plan_expires_at TEXT")
         except Exception:
             pass
     _ensure_admin()
@@ -669,6 +689,69 @@ def first_send_day(tenant_id: str):
         row = conn.execute("SELECT MIN(day) d FROM send_counter WHERE tenant_id=?",
                            (tenant_id,)).fetchone()
     return row["d"] if row and row["d"] else None
+
+
+# ── 自助支付：订单 + 套餐开通/续期 ──────────────────────────
+
+def _add_months(dt: datetime, months: int) -> datetime:
+    """给 datetime 加 N 个自然月（跨年正确；落到月末则取该月最后一天）。"""
+    m = dt.month - 1 + months
+    y = dt.year + m // 12
+    m = m % 12 + 1
+    import calendar
+    d = min(dt.day, calendar.monthrange(y, m)[1])
+    return dt.replace(year=y, month=m, day=d)
+
+
+def create_order(tenant_id: str, plan: str, period: str, months: int,
+                 amount_cny: float, provider: str = "xunhupay") -> str:
+    order_id = "LF" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:6]
+    with get_conn() as conn:
+        conn.execute("""INSERT INTO orders
+            (order_id, tenant_id, plan, period, months, amount_cny, status, provider, created_at)
+            VALUES (?,?,?,?,?,?, 'pending', ?, ?)""",
+            (order_id, tenant_id, plan, period, months, amount_cny, provider, _now()))
+    return order_id
+
+
+def get_order(order_id: str) -> dict:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM orders WHERE order_id=?", (order_id,)).fetchone()
+    return dict(row) if row else {}
+
+
+def mark_order_paid(order_id: str, provider_txn: str = "") -> dict:
+    """把订单标记为已付（幂等）。仅当原状态是 pending 时返回订单 dict（供调用方开通），
+    否则返回 {}（已处理过/不存在 → 不重复开通）。"""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM orders WHERE order_id=?", (order_id,)).fetchone()
+        if not row or row["status"] == "paid":
+            return {}
+        conn.execute("""UPDATE orders SET status='paid', provider_txn=?, paid_at=?
+                        WHERE order_id=? AND status='pending'""",
+                     (provider_txn, _now(), order_id))
+    return dict(row)
+
+
+def upgrade_tenant_plan(tenant_id: str, plan: str, months: int) -> str:
+    """开通/续期：plan 置为 pro/ultra，到期日 = max(现有未过期到期日, 现在) + months 个月。
+    返回新的到期日字符串。"""
+    now = datetime.now(timezone.utc)
+    t = get_tenant(tenant_id) or {}
+    base = now
+    cur = t.get("plan_expires_at")
+    if cur:
+        try:
+            cur_dt = datetime.strptime(cur, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            if cur_dt > now:           # 还没过期 → 在原到期日上叠加（续费不浪费剩余天数）
+                base = cur_dt
+        except Exception:
+            pass
+    new_expiry = _add_months(base, months).strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        conn.execute("UPDATE tenants SET plan=?, status='active', plan_expires_at=? WHERE id=?",
+                     (plan, new_expiry, tenant_id))
+    return new_expiry
 
 
 # ── API 本地用量计数（Serper 等无余额接口的服务）────────────

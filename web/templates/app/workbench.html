@@ -143,20 +143,14 @@
   <div style="background:#ecfdf5;color:#047857;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600">
     ✅ 正式版 · 功能全部开放
   </div>
+  <a href="/upgrade" class="btn btn-sm" style="margin-top:10px;width:100%;display:block;text-align:center">续费 / 升级套餐</a>
   {% else %}
   <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px">
     <div style="font-size:13px;color:#c2410c;font-weight:600">试用版 · 剩 {{ acct.trial_days_left if acct.trial_days_left is not none else '—' }} 天</div>
     <div style="font-size:12px;color:#9a3412;margin-top:3px">升级正式版解锁全部功能与额度</div>
-    <button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%" onclick="toast('请联系客服开通正式版','info')">开通正式版</button>
+    <a href="/upgrade" class="btn btn-primary btn-sm" style="margin-top:10px;width:100%;display:block;text-align:center">开通正式版</a>
   </div>
   {% endif %}
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-    <div>
-      <div style="font-size:12px;color:var(--faint)">账户余额</div>
-      <div style="font-size:20px;font-weight:800">¥0</div>
-    </div>
-    <button class="btn btn-sm" onclick="toast('请联系客服充值','info')">充值</button>
-  </div>
 </div>
 
 <!-- 系统能力（数据流水线简版）-->

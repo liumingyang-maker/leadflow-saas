@@ -192,6 +192,9 @@ tr:hover td{background:#fafbfd}
     </a>
 
     <div class="nav-group">系统</div>
+    <a href="/upgrade" class="{{ 'active' if request.endpoint == 'upgrade_page' }}">
+      <i class="nav-icon">💎</i> 开通会员
+    </a>
     <a href="/settings" class="{{ 'active' if request.endpoint == 'settings' }}">
       <i class="nav-icon">⚙️</i> 系统设置
     </a>

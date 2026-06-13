@@ -1,0 +1,32 @@
+{% extends "app/base.html" %}
+{% block title %}支付确认{% endblock %}
+{% block page_title %}支付确认{% endblock %}
+{% block content %}
+<div style="max-width:480px;margin:40px auto;text-align:center">
+  <div class="card card-pad">
+    <div id="pIcon" style="font-size:48px">⏳</div>
+    <div id="pMsg" style="font-size:16px;font-weight:600;margin:12px 0">正在确认你的支付结果…</div>
+    <div style="font-size:13px;color:var(--muted)">订单号：{{ order_id }}</div>
+    <a href="/upgrade" class="btn btn-sm" style="margin-top:18px;display:inline-block">返回会员页</a>
+  </div>
+</div>
+<script>
+var oid = "{{ order_id }}";
+var tries = 0, t = setInterval(function(){
+  tries++;
+  if(!oid || tries > 20){ clearInterval(t); fail(); return; }
+  fetch('/pay/status/'+oid).then(r=>r.json()).then(d=>{
+    if(d.ok && d.status==='paid'){
+      clearInterval(t);
+      document.getElementById('pIcon').textContent='✅';
+      document.getElementById('pMsg').innerHTML='<span style="color:#16a34a">支付成功，会员已开通！</span>';
+      setTimeout(function(){ location.href='/workbench'; }, 1500);
+    }
+  });
+}, 3000);
+function fail(){
+  document.getElementById('pIcon').textContent='ℹ️';
+  document.getElementById('pMsg').textContent='还没收到支付确认。若已付款请稍候，或刷新本页/联系客服。';
+}
+</script>
+{% endblock %}

@@ -46,8 +46,20 @@ def tenant_tier(tid: str) -> str:
     except Exception:
         t = {}
     plan = (t.get("plan") or "").lower()
-    if plan in ("free", "pro", "ultra"):
+    if plan in ("pro", "ultra"):
+        # 付费档位看到期日：过期 → 自动降级为 free
+        exp = t.get("plan_expires_at")
+        if exp:
+            try:
+                from datetime import datetime, timezone
+                exp_dt = datetime.strptime(exp, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                if exp_dt < datetime.now(timezone.utc):
+                    return "free"
+            except Exception:
+                pass
         return plan
+    if plan == "free":
+        return "free"
     status = (t.get("status") or "").lower()
     if status == "suspended":
         return "suspended"
