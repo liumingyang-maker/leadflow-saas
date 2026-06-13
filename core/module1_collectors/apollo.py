@@ -25,8 +25,10 @@ class ApolloCollector:
     def fetch_all(self, countries: list = None, mock: bool = False) -> list:
         if not countries:
             return []
-        if mock or not self.api_key:
+        if mock:
             return self._mock_results(countries)
+        if not self.api_key:
+            return []        # 无 key → 返回空，不编造数据（Apollo 为自带 Key 渠道）
 
         all_leads = []
         for country in countries[:5]:   # 每次最多5个国家，节省免费额度

@@ -276,8 +276,9 @@ class AlibabaRFQCollector:
             print(f"[AlibabaRFQ] 真实采集完成：{len(all_leads)} 条RFQ需求")
             return all_leads
 
-        print("[AlibabaRFQ] 真实采集无结果（JS渲染页面），使用模拟数据")
-        return self._mock_leads()
+        # 真实采集无结果 → 返回空，绝不编造数据
+        print("[AlibabaRFQ] 真实采集无结果 → 返回空（不编造数据；JS渲染页常需境外节点）")
+        return []
 
 
 alibaba_rfq_collector = AlibabaRFQCollector()

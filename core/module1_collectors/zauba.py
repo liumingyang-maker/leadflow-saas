@@ -221,9 +221,9 @@ class ZaubaCollector:
             print(f"[Zauba] 真实采集完成：{len(all_leads)} 家印度进口商")
             return all_leads
 
-        # 降级：国内服务器直连通常被 Cloudflare 拦截
-        print("[Zauba] 真实采集无结果（国内 IP 被 Cloudflare 拦截为正常现象），使用模拟数据")
-        return self._mock_leads()
+        # 真实采集无结果（国内 IP 常被 Cloudflare 拦截）→ 返回空，绝不编造数据
+        print("[Zauba] 真实采集无结果 → 返回空（不编造数据；印度海关需境外节点）")
+        return []
 
 
 # 单例（供直接 import 使用）

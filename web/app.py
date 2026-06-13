@@ -1350,11 +1350,15 @@ def run_step(step):
                 col = ImportYetiCollector()
                 col.api_key = cfg.get("importyeti_api_key", "")
                 col.mode    = "api" if col.api_key else "scrape"
-                raw = col.fetch_all(mock=not col.api_key)
+                raw = col.fetch_all(mock=False)        # 不编造：无 key 走免费网页模式（真实或空）
                 if raw:
                     s = DataCleaner().run(raw, source="importyeti",
                                          db_path=tenant_ctx.get_db_path(tid))
                     logs.append(f"ImportYeti: 新增 {s.get('db_new',0)} 条")
+                elif not col.api_key:
+                    logs.append("ImportYeti: 未配自有 Key，免费网页模式未采到（美国海关深度数据建议配 Key）")
+                else:
+                    logs.append("ImportYeti: 未采到数据")
 
             # ── Google + DeepSeek ───────────────────────────
             if "google" in channels and step in ("collect","all"):
@@ -1367,7 +1371,7 @@ def run_step(step):
                     gc.deepseek_key    = deepseek_key
                     gc.product_name    = cfg.get("product_name", "")
                     gc.search_keywords = cfg.get("search_keywords", [])
-                    g_raw = gc.fetch_all(countries=countries, mock=not serper_key)
+                    g_raw = gc.fetch_all(countries=countries, mock=False)  # 无 key 返回空，不编造
                     if g_raw:
                         gs = DataCleaner().run(g_raw, source="google",
                                               db_path=tenant_ctx.get_db_path(tid))

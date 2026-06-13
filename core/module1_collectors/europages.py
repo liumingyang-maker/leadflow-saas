@@ -229,8 +229,9 @@ class EuropagesCollector:
             print(f"[Europages] 真实采集完成：{len(all_leads)} 家欧洲进口商")
             return all_leads
 
-        print("[Europages] 真实采集无结果，使用模拟数据")
-        return self._mock_leads()
+        # 真实采集无结果 → 返回空，绝不编造数据
+        print("[Europages] 真实采集无结果 → 返回空（不编造数据；如被反爬请用境外节点）")
+        return []
 
 
 europages_collector = EuropagesCollector()

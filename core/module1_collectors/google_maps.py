@@ -205,11 +205,11 @@ class GoogleMapsCollector:
         if not countries:
             countries = list(_COUNTRY_CITIES.keys())[:8]
 
-        if mock or not self.serper_key:
-            if not self.serper_key:
-                print("[GoogleMaps] 未配置 Serper Key，使用模拟数据")
-                print("[GoogleMaps] 提示：serpapi_key 填写后即可采集真实 Google Maps 数据")
+        if mock:
             return self._mock_leads(countries)
+        if not self.serper_key:
+            print("[GoogleMaps] 未配置 Serper Key → 返回空，不编造数据")
+            return []
 
         # 构建搜索词
         product = self.product_name or (self.search_keywords[0] if self.search_keywords else "motorcycle engine")
@@ -250,7 +250,8 @@ class GoogleMapsCollector:
             print(f"[GoogleMaps] 采集完成：{len(all_leads)} 家商家")
             return all_leads
 
-        return self._mock_leads(countries)
+        # 真实采集无结果 → 返回空，不编造数据
+        return []
 
 
 google_maps_collector = GoogleMapsCollector()

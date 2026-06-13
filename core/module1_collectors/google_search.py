@@ -201,11 +201,14 @@ class SerperDeepSeekCollector:
         if not countries:
             return []
 
-        if mock or not self.serper_key:
+        if mock:
             results = []
             for c in countries[:5]:
                 results.extend(self._mock_results(c))
             return results
+        if not self.serper_key:
+            # 没有 Serper key → 老实返回空，绝不编造数据
+            return []
 
         all_leads = []
         for country in countries:
