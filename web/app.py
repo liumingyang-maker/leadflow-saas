@@ -1133,25 +1133,52 @@ def _unsub_url(tid: str, email: str) -> str:
 @app.route("/u/<token>", methods=["GET", "POST"])
 def unsubscribe(token):
     """买家点开发信里的退订链接 → 进该租户抑制名单，永不再发。
-    支持邮件客户端的一键退订（List-Unsubscribe-Post 会发 POST）。"""
+    GET 只展示确认页（避免邮件客户端/安全网关预取链接误退订）；
+    POST 才真正退订——人点「确认退订」按钮，或邮件客户端的一键退订
+    （List-Unsubscribe-Post 按 RFC 8058 发 POST）都走这里。"""
     try:
         data = _unsub_serializer().loads(token)
         tid, email = data.get("t"), data.get("e")
     except Exception:
         return Response("<p style='font:16px sans-serif;text-align:center;margin-top:80px'>"
                         "Invalid unsubscribe link.</p>", mimetype="text/html"), 400
+
+    # 发件公司名（让收件人知道是谁在给他发）
     try:
-        admin_db.add_suppression(tid, email)
-    except Exception as e:
-        print(f"[unsub] 退订失败: {e}")
-    html = ("<!doctype html><meta charset='utf-8'>"
-            "<div style=\"font:16px/1.6 -apple-system,Segoe UI,sans-serif;max-width:460px;"
-            "margin:90px auto;text-align:center;color:#1f2937\">"
-            "<div style='font-size:42px'>✅</div>"
-            "<h2 style='margin:10px 0'>You have been unsubscribed</h2>"
-            f"<p style='color:#6b7280'>{email} will no longer receive emails from this sender.</p>"
-            "<p style='color:#9ca3af;font-size:13px;margin-top:18px'>您已成功退订，不会再收到此发件人的邮件。</p>"
-            "</div>")
+        sender = (admin_db.get_tenant(tid) or {}).get("company_name") or "this sender"
+    except Exception:
+        sender = "this sender"
+    sender_e = (sender or "").replace("<", "&lt;").replace(">", "&gt;")
+    email_e  = (email or "").replace("<", "&lt;").replace(">", "&gt;")
+
+    _wrap = ("<!doctype html><meta charset='utf-8'>"
+             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+             "<div style=\"font:16px/1.6 -apple-system,Segoe UI,'PingFang SC',sans-serif;"
+             "max-width:460px;margin:80px auto;text-align:center;color:#1f2937;padding:0 20px\">")
+
+    if request.method == "POST":
+        try:
+            admin_db.add_suppression(tid, email)
+        except Exception as e:
+            print(f"[unsub] 退订失败: {e}")
+        html = (_wrap + "<div style='font-size:42px'>✅</div>"
+                "<h2 style='margin:10px 0'>You have been unsubscribed</h2>"
+                f"<p style='color:#6b7280'>{email_e} will no longer receive emails from "
+                f"<b>{sender_e}</b>.</p>"
+                "<p style='color:#9ca3af;font-size:13px;margin-top:18px'>"
+                "您已成功退订，不会再收到此发件人的邮件。</p></div>")
+        return Response(html, mimetype="text/html")
+
+    # GET：确认页（不在此处退订，防预取误触）
+    html = (_wrap + "<h2 style='margin:0 0 8px'>Unsubscribe</h2>"
+            f"<p style='color:#374151'>You are about to unsubscribe <b>{email_e}</b> "
+            f"from emails sent by <b>{sender_e}</b>.</p>"
+            "<form method='POST' style='margin:22px 0'>"
+            "<button type='submit' style='padding:12px 32px;background:#dc2626;color:#fff;"
+            "border:none;border-radius:8px;font-size:15px;cursor:pointer'>"
+            "Confirm unsubscribe / 确认退订</button></form>"
+            "<p style='color:#9ca3af;font-size:13px'>Changed your mind? Just close this page.<br>"
+            "改主意了？直接关闭本页即可，不会退订。</p></div>")
     return Response(html, mimetype="text/html")
 
 

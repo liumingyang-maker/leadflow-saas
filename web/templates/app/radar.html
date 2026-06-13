@@ -141,7 +141,7 @@
   <p class="hint" style="margin:12px 0 0">
     💡 扫描在后台进行（每个竞品要跑你勾选的几条数据源 + AI 解析，开满约需 30~90 秒/家），
     可关页面，完成后下方监控列表会更新。渠道商已入库到
-    <a href="/leads" style="color:#2563eb">客户列表</a>（来源标记「渠道雷达」，notes 里标了来自哪条源），
+    <a href="/leads?source=competitor_radar" style="color:#2563eb">客户列表</a>（来源标记「渠道雷达」，notes 里标了来自哪条源），
     需要邮箱时去客户列表点「批量找邮箱」。
   </p>
 </div>
@@ -268,7 +268,7 @@ function runRadar(){
   if(sources.length === 0){ alert('请至少选一个数据源'); return; }
   var btn = document.getElementById('rdRunBtn');
   btn.disabled = true;
-  document.getElementById('rdStatus').textContent = '⏳ 雷达扫描中，请勿关闭页面…';
+  document.getElementById('rdStatus').textContent = '⏳ 雷达在后台扫描中，可关闭页面，挖到的经销商会自动入库，下方列表稍后自动更新…';
   fetch('/radar/run',{
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
@@ -288,8 +288,9 @@ function pollRadar(tid){
     fetch('/task/'+tid).then(function(r){return r.json();}).then(function(d){
       if(d.status==='done'){
         clearInterval(timer);
-        document.getElementById('rdStatus').textContent = '✅ 完成！' + (d.log||[]).join(' · ');
-        setTimeout(function(){ location.reload(); }, 1500);
+        document.getElementById('rdStatus').innerHTML = '✅ 完成！' + (d.log||[]).join(' · ') +
+          ' &nbsp;<a href="/leads?source=competitor_radar" style="color:#2563eb;font-weight:600">→ 去客户列表查看挖到的渠道商</a>';
+        setTimeout(function(){ location.reload(); }, 4000);
       } else if(d.status==='error'){
         clearInterval(timer);
         document.getElementById('rdStatus').textContent = '❌ 出错：' + (d.log||[]).join(' ');

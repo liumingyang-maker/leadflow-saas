@@ -3,6 +3,14 @@
 {% block page_title %}数据统计{% endblock %}
 {% block content %}
 <div class="content">
+  {% if not stats.total %}
+  <div style="text-align:center;padding:28px 20px;background:#fff;border:1px dashed #e2e8f0;border-radius:12px;margin-bottom:16px">
+    <div style="font-size:15px;font-weight:700;color:#374151;margin-bottom:6px">📊 还没有数据可以统计</div>
+    <p style="font-size:13px;color:#6b7280;margin:0 0 14px">采集第一批客户后，这里会展示客户分级、开发信打开/点击效果和采集来源分析。</p>
+    <a href="/radar" style="display:inline-block;padding:9px 20px;background:#2563eb;color:#fff;border-radius:7px;text-decoration:none;font-size:13px;font-weight:600">🛰️ 去渠道雷达挖客户</a>
+    <a href="/collect" style="display:inline-block;margin-left:8px;padding:9px 20px;background:#fff;color:#2563eb;border:1px solid #2563eb;border-radius:7px;text-decoration:none;font-size:13px">🔍 其它采集渠道</a>
+  </div>
+  {% endif %}
   <div class="stat-grid">
     {% for label, val, color in [
       ('总客户数', stats.total, '#111827'),

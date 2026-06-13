@@ -4,6 +4,13 @@
 {% block content %}
 <div style="max-width:880px">
 
+  {% if not health.sent %}
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#1e40af;line-height:1.7">
+    📬 这一页管「开发信能不能送进买家收件箱」。你还没发过信，所以下面的数据都是 0。<br>
+    先去 <a href="/settings" style="color:#2563eb;font-weight:600">系统设置 → 给买家发开发信</a> 配好发信通道（推荐专业 ESP + 域名认证，送达率最高），再到客户详情页发第一封。下面的「域名认证检测」和「预热」可以现在就先配好。
+  </div>
+  {% endif %}
+
   <!-- 健康度卡 -->
   <div class="card card-pad" style="margin-bottom:18px">
     <div class="card-title">📊 发信健康度</div>
