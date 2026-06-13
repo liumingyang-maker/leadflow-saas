@@ -323,6 +323,17 @@ function addNote(){
 }
 
 // ── AI 写开发信 ──
+// AI 不可用时的兜底：套用现成模板（模板已按本客户渲染好占位符），不让用户「什么都做不了」
+function _aiFallbackTemplate(){
+  var keys=Object.keys(TEMPLATES||{});
+  if(!keys.length) return false;
+  var t=TEMPLATES[keys[0]]||{};
+  if(!(t.subject||t.body)) return false;
+  document.getElementById('mailSubject').value=t.subject||'';
+  document.getElementById('mailBody').value=t.body||'';
+  var pick=document.getElementById('tplPick'); if(pick) pick.value=keys[0];
+  return true;
+}
 function aiWriteEmail(btn){
   var st=document.getElementById('aiWriteStatus');
   var old=btn.textContent; btn.disabled=true; btn.style.opacity=.6; btn.textContent='⏳ 生成中…';
@@ -337,9 +348,14 @@ function aiWriteEmail(btn){
       document.getElementById('mailBody').value=d.body||'';
       st.textContent='✅ 已生成（'+(d.lang||'en')+'），可直接编辑后发送';
       toast('AI 开发信已生成','ok');
+    } else if(_aiFallbackTemplate()){
+      st.textContent='⚠️ AI 暂时不可用（'+(d.error||'生成失败')+'），已为你套用现成模板，手动调整后即可发送';
+      toast('AI 不可用，已套用模板','err');
     } else { st.textContent='❌ '+(d.error||'生成失败'); }
-  }).catch(()=>{ st.textContent='❌ 网络错误'; })
-    .finally(()=>{ btn.disabled=false; btn.style.opacity=1; btn.textContent=old; });
+  }).catch(()=>{
+    if(_aiFallbackTemplate()) st.textContent='⚠️ AI 网络错误，已为你套用现成模板，手动调整后即可发送';
+    else st.textContent='❌ 网络错误';
+  }).finally(()=>{ btn.disabled=false; btn.style.opacity=1; btn.textContent=old; });
 }
 
 // ── 发开发信 ──

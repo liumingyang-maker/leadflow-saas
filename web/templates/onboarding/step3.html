@@ -1,196 +1,51 @@
 {% extends "onboarding/base.html" %}
-{% block extra_style %}
-<style>
-/* ── 洲选择卡片 ── */
-.region-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:28px}
-.region-card{border:2px solid #e2e8f0;border-radius:10px;padding:14px 12px;
-             cursor:pointer;text-align:center;transition:.15s;user-select:none}
-.region-card:hover{border-color:#93c5fd;background:#f0f9ff}
-.region-card.selected{border-color:#2563eb;background:#eff6ff}
-.region-card .flag{font-size:26px;margin-bottom:6px}
-.region-card .name{font-size:13px;font-weight:600;color:#374151}
-.region-card .count{font-size:11px;color:#9ca3af;margin-top:2px}
-.region-card.selected .name{color:#2563eb}
-/* ── 排除区域 ── */
-.exclude-box{background:#fafafa;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin-bottom:24px}
-.exclude-box h3{font-size:14px;font-weight:600;color:#374151;margin-bottom:4px}
-.exclude-box p{font-size:12px;color:#9ca3af;margin-bottom:14px}
-.exclude-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
-.excl-item{display:flex;align-items:center;gap:7px;padding:7px 10px;
-           border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;
-           transition:.15s;font-size:13px;background:#fff}
-.excl-item:hover{border-color:#f87171;background:#fef2f2}
-.excl-item input{width:15px;height:15px;cursor:pointer;flex-shrink:0;accent-color:#ef4444}
-.excl-item.excluded{border-color:#ef4444;background:#fef2f2;color:#dc2626}
-/* ── 结果预览 ── */
-.result-bar{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;
-            padding:12px 16px;font-size:13px;color:#166534;margin-bottom:20px}
-.result-bar strong{font-size:15px}
-#no-region-tip{color:#9ca3af;font-size:13px;padding:12px 0;display:none}
-</style>
-{% endblock %}
-
 {% block body %}
-<div class="step-title">第 3 步 / 共 5 步</div>
-<h1>选择目标市场</h1>
-<p class="subtitle">先选择大洲，再排除不想要的国家，系统只在目标范围内采集买家。</p>
+<div class="step-title">第 3 步 / 共 3 步</div>
+<h1>🎉 配置完成，可以开干了！</h1>
+<p class="subtitle">
+  你<b>不用申请任何 API Key</b>——谷歌搜索采集、AI 智能分析、客户评分、渠道雷达，
+  全由平台直接提供，开箱即用。会员套餐内含每月额度。
+</p>
 
-<form method="POST" id="mainForm">
-  <!-- 隐藏字段，提交时由 JS 填充 -->
-  <input type="hidden" name="selected_regions" id="regionsInput">
-  <input type="hidden" name="excluded_countries" id="excludedInput">
+<form method="POST">
 
-  <!-- ① 选洲 -->
-  <h3 style="font-size:14px;font-weight:600;color:#374151;margin-bottom:12px">① 选择目标大洲</h3>
-  <div class="region-grid">
-    {% set region_flags = {
-      '非洲':     {'flag':'🌍'},
-      '东南亚':   {'flag':'🌏'},
-      '南亚':     {'flag':'🇮🇳'},
-      '中东':     {'flag':'🕌'},
-      '北美':     {'flag':'🇺🇸'},
-      '拉丁美洲': {'flag':'🌎'},
-      '西欧':     {'flag':'🇪🇺'},
-      '东欧/中亚': {'flag':'🏔️'},
-      '大洋洲':   {'flag':'🦘'}
-    } %}
-    {% for region_name, countries in regions.items() %}
-    {% set meta = region_flags.get(region_name, {'flag':'🌐','en':''}) %}
-    <div class="region-card {{ 'selected' if region_name in (cfg.selected_regions or []) }}"
-         data-region="{{ region_name }}"
-         data-countries="{{ countries | join(',') }}"
-         onclick="toggleRegion(this)">
-      <div class="flag">{{ meta.flag }}</div>
-      <div class="name">{{ region_name }}</div>
-      <div class="count">{{ countries | length }} 个国家</div>
+  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;
+              padding:18px 20px;margin-top:8px">
+    <div style="font-size:14px;font-weight:700;color:#166534;margin-bottom:10px">平台已为你内置：</div>
+    <div style="font-size:13px;color:#15803d;line-height:2">
+      🔍 <b>谷歌搜索采集</b> —— 全网挖买家官网/联系方式<br>
+      🛰️ <b>渠道雷达</b> —— 挖竞品的海外经销商（你的目标客户）<br>
+      🧠 <b>AI 智能分析</b> —— 解析搜索结果、客户评分、写开发信<br>
     </div>
-    {% endfor %}
-  </div>
-
-  <!-- ② 排除国家 -->
-  <h3 style="font-size:14px;font-weight:600;color:#374151;margin-bottom:8px">② 排除不想要的国家（可选）</h3>
-  <div class="exclude-box">
-    <p>从已选大洲里勾选不想采集的国家</p>
-    <div id="no-region-tip">请先在上方选择至少一个大洲</div>
-    <div id="search-wrap" style="display:none;margin-bottom:12px">
-      <input type="text" id="countrySearch" placeholder="🔍 搜索国家名称…"
-             oninput="filterCountries(this.value)"
-             style="width:100%;padding:8px 12px;border:1px solid #d1d5db;
-                    border-radius:7px;font-size:13px;outline:none">
+    <div style="font-size:12px;color:#16a34a;margin-top:10px;padding-top:10px;border-top:1px solid #bbf7d0">
+      用量随会员档位每月自动重置。额度用完可升级或下月再用——工作台「API 额度」随时可查。
     </div>
-    <div class="exclude-grid" id="excludeGrid"></div>
   </div>
 
-  <!-- 结果预览 -->
-  <div class="result-bar" id="resultBar" style="display:none">
-    目标国家共 <strong id="resultCount">0</strong> 个：<span id="resultList" style="color:#15803d"></span>
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
+              padding:16px 20px;margin-top:14px">
+    <div style="font-size:13px;font-weight:600;color:#1e40af;margin-bottom:6px">
+      📬 想给买家发开发信？
+    </div>
+    <div style="font-size:12.5px;color:#1e40af;opacity:.85;line-height:1.7">
+      发件邮箱 / SMTP 在「系统设置 → 给买家发开发信」里配置即可；首次去客户详情页发信时也有引导。
+      <b>现在先去挖客户，不用着急配。</b>
+    </div>
   </div>
 
-  <div class="actions">
-    <button class="btn-next" type="submit">下一步 →</button>
-    <button class="btn-skip" type="button" onclick="skipStep()">暂时跳过</button>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
+              padding:16px 20px;margin-top:14px">
+    <div style="font-size:13px;font-weight:600;color:#475569;margin-bottom:6px">
+      🔌 进阶数据源（可选，之后在「系统设置」里加）
+    </div>
+    <div style="font-size:12.5px;color:#94a3b8;line-height:1.7">
+      海关进口记录（ImportYeti）、Apollo 联系人、TikTok（Apify）等高级数据源，
+      需要你自己的账号 Key。<b>现在无需理会</b>——等你用熟了、确实需要时，去设置页填即可。
+    </div>
+  </div>
+
+  <div class="actions" style="margin-top:24px">
+    <button class="btn-next" type="submit">🚀 进入工作台，开始挖客户</button>
   </div>
 </form>
-{% endblock %}
-
-{% block extra_script %}
-<script>
-// 从 Python 传入的数据
-var REGIONS = {{ regions | tojson }};
-var savedRegions   = {{ (cfg.selected_regions or []) | tojson }};
-var savedExcluded  = {{ (cfg.excluded_countries or []) | tojson }};
-
-var selectedRegions = new Set(savedRegions);
-var excludedCountries = new Set(savedExcluded);
-
-function toggleRegion(card) {
-  var name = card.dataset.region;
-  if (selectedRegions.has(name)) {
-    selectedRegions.delete(name);
-    card.classList.remove('selected');
-  } else {
-    selectedRegions.add(name);
-    card.classList.add('selected');
-  }
-  rebuildExcludeGrid();
-  updateResult();
-}
-
-function rebuildExcludeGrid() {
-  var grid = document.getElementById('excludeGrid');
-  var tip  = document.getElementById('no-region-tip');
-  var searchWrap = document.getElementById('search-wrap');
-  var searchInput = document.getElementById('countrySearch');
-  grid.innerHTML = '';
-
-  var allCountries = [];
-  selectedRegions.forEach(function(r) {
-    if (REGIONS[r]) allCountries = allCountries.concat(REGIONS[r]);
-  });
-
-  if (allCountries.length === 0) {
-    tip.style.display = 'block';
-    searchWrap.style.display = 'none';
-    return;
-  }
-  tip.style.display = 'none';
-  searchWrap.style.display = 'block';
-  if (searchInput) searchInput.value = '';
-
-  allCountries.forEach(function(c) {
-    var isExcl = excludedCountries.has(c);
-    var div = document.createElement('label');
-    div.className = 'excl-item' + (isExcl ? ' excluded' : '');
-    div.dataset.name = c;
-    div.innerHTML = '<input type="checkbox"' + (isExcl ? ' checked' : '') + '> ' + c;
-    div.querySelector('input').addEventListener('change', function() {
-      if (this.checked) { excludedCountries.add(c); div.classList.add('excluded'); }
-      else              { excludedCountries.delete(c); div.classList.remove('excluded'); }
-      updateResult();
-    });
-    grid.appendChild(div);
-  });
-}
-
-function filterCountries(keyword) {
-  var kw = keyword.trim();
-  document.querySelectorAll('#excludeGrid .excl-item').forEach(function(el) {
-    el.style.display = (!kw || el.dataset.name.indexOf(kw) !== -1) ? '' : 'none';
-  });
-}
-
-function updateResult() {
-  var bar   = document.getElementById('resultBar');
-  var count = document.getElementById('resultCount');
-  var list  = document.getElementById('resultList');
-
-  var final = [];
-  selectedRegions.forEach(function(r) {
-    if (REGIONS[r]) REGIONS[r].forEach(function(c) {
-      if (!excludedCountries.has(c)) final.push(c);
-    });
-  });
-
-  if (final.length === 0) { bar.style.display = 'none'; return; }
-  bar.style.display = 'block';
-  count.textContent = final.length;
-  list.textContent  = final.slice(0,8).join('、') + (final.length > 8 ? '…' : '');
-}
-
-document.getElementById('mainForm').addEventListener('submit', function() {
-  document.getElementById('regionsInput').value  = JSON.stringify(Array.from(selectedRegions));
-  document.getElementById('excludedInput').value = JSON.stringify(Array.from(excludedCountries));
-});
-
-function skipStep() {
-  document.getElementById('regionsInput').value  = '[]';
-  document.getElementById('excludedInput').value = '[]';
-  document.getElementById('mainForm').action = '/onboarding/4';
-  document.getElementById('mainForm').submit();
-}
-
-// 初始化
-rebuildExcludeGrid();
-updateResult();
-</script>
 {% endblock %}

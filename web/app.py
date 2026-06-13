@@ -142,7 +142,7 @@ def onboarding_required(f):
         if "tenant_id" not in session:
             return redirect(url_for("login"))
         cfg = tenant_ctx.load_config(session["tenant_id"])
-        if not cfg.get("onboarding_step", 0) >= 5:
+        if not cfg.get("onboarding_step", 0) >= 3:
             return redirect(url_for("onboarding_step",
                             step=max(1, cfg.get("onboarding_step", 0) + 1)))
         return f(*args, **kwargs)
@@ -360,7 +360,7 @@ def login():
                     session["tenant_email"] = t["email"]
                     session["company_name"] = t.get("company_name", "")
                     cfg = tenant_ctx.load_config(t["id"])
-                    if cfg.get("onboarding_step", 0) < 5:
+                    if cfg.get("onboarding_step", 0) < 3:
                         return redirect(url_for("onboarding_step",
                                         step=max(1, cfg.get("onboarding_step", 0) + 1)))
                     return redirect(url_for("workbench"))
@@ -482,7 +482,7 @@ def reset_password(token):
 @app.route("/onboarding/<int:step>", methods=["GET", "POST"])
 @login_required
 def onboarding_step(step):
-    if step not in range(1, 6):
+    if step not in range(1, 4):
         return redirect(url_for("workbench"))
     tid = current_tid()
     cfg = tenant_ctx.load_config(tid)
@@ -500,14 +500,7 @@ def onboarding_step(step):
                                    industry=cfg["industry"])
 
         elif step == 2:
-            hs_raw = request.form.get("hs_codes", "")
-            cfg["hs_codes"] = [h.strip() for h in
-                               hs_raw.replace("，", ",").split(",") if h.strip()][:20]
-            kw_raw = request.form.get("search_keywords", "")
-            cfg["search_keywords"] = [k.strip() for k in
-                                      kw_raw.split("\n") if k.strip()][:30]
-
-        elif step == 3:
+            # 目标市场（原第 3 步，精简后挪到第 2 步）
             selected_regions   = json.loads(request.form.get("selected_regions", "[]"))
             excluded_countries = json.loads(request.form.get("excluded_countries", "[]"))
             excluded_set = set(excluded_countries)
@@ -521,24 +514,14 @@ def onboarding_step(step):
                 "tier1": final[:3], "tier2": final[3:8], "tier3": final[8:],
             }
 
-        elif step == 4:
-            for k in ("importyeti_api_key", "serpapi_key", "hunter_api_key",
-                      "deepseek_api_key", "anthropic_api_key", "apollo_api_key"):
-                v = request.form.get(k, "").strip()[:200]
-                if v:
-                    cfg[k] = v
-
-        elif step == 5:
-            cfg["sender_name"]      = request.form.get("sender_name", "").strip()[:80]
-            cfg["email_from_name"]  = request.form.get("email_from_name", "").strip()[:80]
-            cfg["smtp_user"]        = request.form.get("smtp_user", "").strip()[:120]
-            cfg["smtp_pass"]        = request.form.get("smtp_pass", "").strip()[:120]
-            cfg["email_signature"]  = request.form.get("email_signature", "").strip()[:500]
+        # step == 3：完成页，无表单字段，直接收尾
+        # （搜索/AI 由平台代付，无需填 Key；发件人/SMTP 在「系统设置」里配，
+        #   首次发信时详情页有引导横幅。HS 编码可在设置的产品画像里补。）
 
         cfg["onboarding_step"] = step
         tenant_ctx.save_config(tid, cfg)
 
-        if step < 5:
+        if step < 3:
             return redirect(url_for("onboarding_step", step=step + 1))
         admin_db.update_tenant(tid, onboarding_done=1)
         _init_tenant_db(tid)
