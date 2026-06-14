@@ -1,85 +1,85 @@
-/ [GET] -> index
-/admin [GET] -> admin_panel
-/admin/coupon/<code>/delete [POST] -> admin_coupon_delete
-/admin/coupon/create [POST] -> admin_coupon_create
-/admin/login [GET,POST] -> admin_login
-/admin/logout [GET] -> admin_logout
-/admin/mail-test [POST] -> admin_mail_test
-/admin/pipeline [GET] -> admin_pipeline
-/admin/tenant/<tid>/activate [POST] -> admin_activate
-/admin/tenant/<tid>/delete [POST] -> admin_delete_tenant
-/admin/tenant/<tid>/edit [POST] -> admin_edit_tenant
-/admin/tenant/<tid>/note [POST] -> admin_note
-/admin/tenant/<tid>/plan [POST] -> admin_set_plan
-/admin/tenant/<tid>/reset_password [POST] -> admin_reset_password
-/admin/tenant/<tid>/suspend [POST] -> admin_suspend
-/admin/tenant/<tid>/trial [POST] -> admin_set_trial
-/admin/tenant/create [POST] -> admin_create_tenant_route
-/api/inbound/<token> [POST] -> api_inbound
-/api/quota [GET] -> api_quota_view
-/collect [GET] -> collect_page
-/collect/import-cards [POST] -> import_cards
-/collect/ocr-cards [POST] -> ocr_cards
-/crm [GET] -> crm_board
-/dashboard [GET] -> dashboard
-/deliverability [GET] -> deliverability
-/deliverability/check-domain [POST] -> deliverability_check_domain
-/deliverability/settings [POST] -> deliverability_settings
-/deliverability/unsuppress [POST] -> deliverability_unsuppress
-/email-templates [GET,POST] -> email_templates
-/email-templates/reset [GET] -> email_templates_reset
-/export [GET] -> export_csv
-/forgot-password [GET,POST] -> forgot_password
-/import [GET] -> import_page
-/import/confirm [POST] -> import_confirm
-/import/upload [POST] -> import_upload
-/inbound [GET] -> inbound_page
-/inbound/regenerate [POST] -> inbound_regenerate
-/lead/<lead_id> [GET] -> lead_detail
-/lead/<lead_id>/ai-email [POST] -> ai_write_email
-/lead/<lead_id>/deal [POST] -> lead_set_deal
-/lead/<lead_id>/delete [POST] -> delete_lead
-/lead/<lead_id>/enrich [POST] -> enrich_lead_contacts
-/lead/<lead_id>/follow-up [POST] -> lead_set_followup
-/lead/<lead_id>/investigate [POST] -> investigate_lead
-/lead/<lead_id>/log-whatsapp [POST] -> log_lead_whatsapp
-/lead/<lead_id>/note [POST] -> lead_add_note
-/lead/<lead_id>/send-email [POST] -> send_lead_email
-/lead/<lead_id>/send-whatsapp-api [POST] -> send_lead_whatsapp_api
-/lead/<lead_id>/stage [POST] -> lead_set_stage
-/lead/<lead_id>/tags [POST] -> lead_set_tags
-/lead/<lead_id>/update [POST] -> update_lead
-/lead/<lead_id>/verify [POST] -> verify_lead_company
-/leads [GET] -> leads_list
-/login [GET,POST] -> login
-/logout [GET] -> logout
-/onboarding/<int:step> [GET,POST] -> onboarding_step
-/pay/coupon-check [POST] -> pay_coupon_check
-/pay/create [POST] -> pay_create
-/pay/notify/<provider> [GET,POST] -> pay_notify
-/pay/return [GET] -> pay_return
-/pay/status/<order_id> [GET] -> pay_status
-/privacy [GET] -> privacy
-/product-profile/generate [POST] -> product_profile_generate
-/radar [GET] -> radar
-/radar/<cid>/delete [POST] -> radar_delete
-/radar/<cid>/monitor [POST] -> radar_monitor
-/radar/<cid>/seen [POST] -> radar_seen
-/radar/cleanup [POST] -> radar_cleanup
-/radar/run [POST] -> radar_run
-/register [GET,POST] -> register
-/resend-verify [POST] -> resend_verify
-/reset-password/<token> [GET,POST] -> reset_password
-/run/<step> [POST] -> run_step
-/settings [GET,POST] -> settings
-/static/<path:filename> [GET] -> static
-/stats [GET] -> stats_page
-/t/c/<tracking_id> [GET] -> track_click
-/t/o/<tracking_id>.gif [GET] -> track_open
-/task/<task_id> [GET] -> task_status
-/terms [GET] -> terms
-/u/<token> [GET,POST] -> unsubscribe
-/upgrade [GET] -> upgrade_page
-/verify-email/<token> [GET] -> verify_email
-/verify-pending [GET] -> verify_pending
-/workbench [GET] -> workbench
+GET | / | index
+GET | /admin | admin_panel
+POST | /admin/coupon/<code>/delete | admin_coupon_delete
+POST | /admin/coupon/create | admin_coupon_create
+GET,POST | /admin/login | admin_login
+GET | /admin/logout | admin_logout
+POST | /admin/mail-test | admin_mail_test
+GET | /admin/pipeline | admin_pipeline
+POST | /admin/tenant/<tid>/activate | admin_activate
+POST | /admin/tenant/<tid>/delete | admin_delete_tenant
+POST | /admin/tenant/<tid>/edit | admin_edit_tenant
+POST | /admin/tenant/<tid>/note | admin_note
+POST | /admin/tenant/<tid>/plan | admin_set_plan
+POST | /admin/tenant/<tid>/reset_password | admin_reset_password
+POST | /admin/tenant/<tid>/suspend | admin_suspend
+POST | /admin/tenant/<tid>/trial | admin_set_trial
+POST | /admin/tenant/create | admin_create_tenant_route
+POST | /api/inbound/<token> | api_inbound
+GET | /api/quota | api_quota_view
+GET | /collect | collect_page
+POST | /collect/import-cards | import_cards
+POST | /collect/ocr-cards | ocr_cards
+GET | /crm | crm_board
+GET | /dashboard | dashboard
+GET | /deliverability | deliverability
+POST | /deliverability/check-domain | deliverability_check_domain
+POST | /deliverability/settings | deliverability_settings
+POST | /deliverability/unsuppress | deliverability_unsuppress
+GET,POST | /email-templates | email_templates
+GET | /email-templates/reset | email_templates_reset
+GET | /export | export_csv
+GET,POST | /forgot-password | forgot_password
+GET | /import | import_page
+POST | /import/confirm | import_confirm
+POST | /import/upload | import_upload
+GET | /inbound | inbound_page
+POST | /inbound/regenerate | inbound_regenerate
+GET | /lead/<lead_id> | lead_detail
+POST | /lead/<lead_id>/ai-email | ai_write_email
+POST | /lead/<lead_id>/deal | lead_set_deal
+POST | /lead/<lead_id>/delete | delete_lead
+POST | /lead/<lead_id>/enrich | enrich_lead_contacts
+POST | /lead/<lead_id>/follow-up | lead_set_followup
+POST | /lead/<lead_id>/investigate | investigate_lead
+POST | /lead/<lead_id>/log-whatsapp | log_lead_whatsapp
+POST | /lead/<lead_id>/note | lead_add_note
+POST | /lead/<lead_id>/send-email | send_lead_email
+POST | /lead/<lead_id>/send-whatsapp-api | send_lead_whatsapp_api
+POST | /lead/<lead_id>/stage | lead_set_stage
+POST | /lead/<lead_id>/tags | lead_set_tags
+POST | /lead/<lead_id>/update | update_lead
+POST | /lead/<lead_id>/verify | verify_lead_company
+GET | /leads | leads_list
+GET,POST | /login | login
+GET | /logout | logout
+GET,POST | /onboarding/<int:step> | onboarding_step
+POST | /pay/coupon-check | pay_coupon_check
+POST | /pay/create | pay_create
+GET,POST | /pay/notify/<provider> | pay_notify
+GET | /pay/return | pay_return
+GET | /pay/status/<order_id> | pay_status
+GET | /privacy | privacy
+POST | /product-profile/generate | product_profile_generate
+GET | /radar | radar
+POST | /radar/<cid>/delete | radar_delete
+POST | /radar/<cid>/monitor | radar_monitor
+POST | /radar/<cid>/seen | radar_seen
+POST | /radar/cleanup | radar_cleanup
+POST | /radar/run | radar_run
+GET,POST | /register | register
+POST | /resend-verify | resend_verify
+GET,POST | /reset-password/<token> | reset_password
+POST | /run/<step> | run_step
+GET,POST | /settings | settings
+GET | /static/<path:filename> | static
+GET | /stats | stats_page
+GET | /t/c/<tracking_id> | track_click
+GET | /t/o/<tracking_id>.gif | track_open
+GET | /task/<task_id> | task_status
+GET | /terms | terms
+GET,POST | /u/<token> | unsubscribe
+GET | /upgrade | upgrade_page
+GET | /verify-email/<token> | verify_email
+GET | /verify-pending | verify_pending
+GET | /workbench | workbench

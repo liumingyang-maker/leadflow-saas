@@ -12,6 +12,17 @@ def test_app_startup(flask_app):
     assert len(list(flask_app.url_map.iter_rules())) > 0
 
 
+def test_app_import_does_not_start_scheduler_threads(flask_app, app_import_thread_guard):
+    """Importing the app must not run the three scheduler background loops."""
+    assert flask_app is not None
+    assert app_import_thread_guard.blocked == [
+        "start_followup_scheduler.<locals>._loop",
+        "start_radar_scheduler.<locals>._loop",
+        "start_auto_backup.<locals>._loop",
+    ]
+    assert app_import_thread_guard.real_starts == []
+
+
 def test_landing_page(client):
     """落地页可访问，且渲染出品牌名。"""
     resp = client.get("/")
