@@ -1,0 +1,6 @@
+# P0-000 重构基线：开发 / CI 依赖。
+# 包含运行时依赖（导入应用需要），再加测试与 lint 工具。
+-r requirements.txt
+
+pytest>=8.0
+ruff>=0.6

@@ -1,0 +1,28 @@
+# P0-000 重构基线：工具配置（Ruff + pytest）。
+# 说明：重构期内 Ruff 只覆盖"新代码"（tests/ 以及未来迁入的 app/）。
+# 旧代码（web/、core/、根模块）暂被冻结、按 TASKS.md 逐个迁移时再纳入检查，
+# 以遵守 AGENTS.md "不顺手格式化整个仓库" 的约束、并让 CI 稳定通过。
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "core",
+    "web",
+    "tenants",
+    "leadflow_refactor_docs",
+    "admin_db.py",
+    "config.py",
+    "run.py",
+    "serve.py",
+    "tenant_ctx.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = [".", "web", "core"]
+addopts = "-ra -q"
