@@ -1,7 +1,7 @@
 # LeadFlow SaaS 重构文档包
 
-> 适用仓库：`liumingyang-maker/leadflow-saas`
-> 审查日期：2026-06-14
+> 适用仓库：`liumingyang-maker/leadflow-saas`  
+> 审查日期：2026-06-14  
 > 目标：在不推倒现有产品的前提下，把项目改造成新手可维护、可测试、可上线、适合 Codex / Claude Code 持续开发的结构。
 
 ## 一句话结论
