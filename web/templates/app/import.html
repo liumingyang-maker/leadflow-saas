@@ -33,6 +33,7 @@
 
 {% elif preview %}
 <form method="POST" action="/import/confirm">
+  {{ csrf_field() }}
   <input type="hidden" name="tmpfile" value="{{ tmpfile }}">
   <input type="hidden" name="source" value="{{ source }}">
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
@@ -69,6 +70,7 @@
     <b>使用方法：</b>从展会主办方拿到参展商名单（Excel 或 CSV），直接上传。系统自动识别列，清洗后导入客户库。
   </div>
   <form method="POST" action="/import/upload" enctype="multipart/form-data">
+    {{ csrf_field() }}
     <div style="margin-bottom:16px">
       <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">展会名称</label>
       <input type="text" name="source" placeholder="例如：CIMA重庆摩托车展2025"

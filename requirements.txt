@@ -2,6 +2,7 @@
 flask>=3.0
 flask-cors>=4.0
 flask-login>=0.6
+Flask-WTF>=1.2
 waitress>=3.0            # 生产 WSGI 服务器（单进程多线程，跟后台调度/内存状态兼容）
 
 # 数据处理

@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+{{ csrf_meta() }}
 <title>管理后台 — 外贸雷达</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -60,7 +61,10 @@ tr:hover td{background:#243349}
   <div class="brand">外贸雷达</div>
   <div class="title">管理员后台</div>
   <a href="/admin/pipeline" class="logout" style="margin-left:auto;color:#60a5fa;border-color:#1e3a5f">🔬 技术架构</a>
-  <a href="/admin/logout" class="logout" style="margin-left:0">退出</a>
+  <form method="POST" action="/admin/logout" style="margin-left:0">
+    {{ csrf_field() }}
+    <button class="logout" type="submit" style="margin-left:0;background:transparent;cursor:pointer">退出</button>
+  </form>
 </div>
 
 <div class="content">
@@ -138,6 +142,7 @@ tr:hover td{background:#243349}
     </div>
     <div id="couponBox" class="addbox" style="display:none">
       <form method="POST" action="/admin/coupon/create">
+        {{ csrf_field() }}
         <div class="fld"><label>类型</label>
           <select class="inp" name="type">
             <option value="amount">减面额（元）</option>
@@ -166,6 +171,7 @@ tr:hover td{background:#243349}
           <td style="color:#64748b;font-size:12px">{{ c.note or '—' }}</td>
           <td>
             <form method="POST" action="/admin/coupon/{{ c.code }}/delete" style="display:inline">
+              {{ csrf_field() }}
               <button class="btn-sm btn-red" type="submit" onclick="return confirm('删除优惠券 {{ c.code }}？')">删除</button>
             </form>
           </td>
@@ -188,6 +194,7 @@ tr:hover td{background:#243349}
     </div>
     <div id="createBox" class="addbox" style="display:none">
       <form method="POST" action="/admin/tenant/create">
+        {{ csrf_field() }}
         <div class="fld"><label>邮箱（登录账号）</label><input class="inp" name="email" type="email" required placeholder="customer@example.com"></div>
         <div class="fld"><label>初始密码</label><input class="inp" name="password" required placeholder="给客户的登录密码"></div>
         <div class="fld"><label>公司名（可选）</label><input class="inp" name="company_name" placeholder="客户公司"></div>
@@ -234,6 +241,7 @@ tr:hover td{background:#243349}
           <td>
             {% set cur = (t.plan or 'basic')|lower %}
             <form method="POST" action="/admin/tenant/{{ t.id }}/plan" style="margin:0">
+              {{ csrf_field() }}
               <select name="plan" class="inp" style="min-width:130px;padding:5px 8px;font-size:12px"
                       onchange="this.form.submit()">
                 <option value="basic" {{ 'selected' if cur in ('basic','') else '' }}>按状态（={{ tiers[t.id] }}）</option>
@@ -248,6 +256,7 @@ tr:hover td{background:#243349}
           <td style="color:#64748b;font-size:12px">{{ t.trial_ends[:10] if t.trial_ends else '—' }}</td>
           <td>
             <form class="note-form" method="POST" action="/admin/tenant/{{ t.id }}/note">
+              {{ csrf_field() }}
               <input type="text" name="note" value="{{ t.note or '' }}" placeholder="备注（收款等）">
               <button type="submit">存</button>
             </form>
@@ -256,26 +265,31 @@ tr:hover td{background:#243349}
             <div style="display:flex;gap:5px;flex-wrap:wrap">
               {% if t.status != 'active' %}
               <form method="POST" action="/admin/tenant/{{ t.id }}/activate" style="display:inline">
+                {{ csrf_field() }}
                 <button class="btn-sm btn-green" type="submit">开通</button>
               </form>
               {% endif %}
               {% if t.status == 'active' %}
               <form method="POST" action="/admin/tenant/{{ t.id }}/trial" style="display:inline">
+                {{ csrf_field() }}
                 <button class="btn-sm" type="submit">改试用</button>
               </form>
               {% endif %}
               {% if t.status != 'suspended' %}
               <form method="POST" action="/admin/tenant/{{ t.id }}/suspend" style="display:inline">
+                {{ csrf_field() }}
                 <button class="btn-sm btn-red" type="submit"
                         onclick="return confirm('确认暂停 {{ t.email }}？')">暂停</button>
               </form>
               {% endif %}
               <form method="POST" action="/admin/tenant/{{ t.id }}/reset_password" style="display:inline">
+                {{ csrf_field() }}
                 <button class="btn-sm" type="submit" style="border-color:#7c3aed;color:#a78bfa"
                         onclick="return confirm('重置 {{ t.email }} 的密码为 reset123？')">重置密码</button>
               </form>
               <button class="btn-sm" type="button" onclick="toggleBox('edit-{{ t.id }}')">编辑</button>
               <form method="POST" action="/admin/tenant/{{ t.id }}/delete" style="display:inline">
+                {{ csrf_field() }}
                 <button class="btn-sm btn-red" type="submit"
                         onclick="return confirm('⚠️ 确认彻底删除 {{ t.email }}？\n该客户的所有线索数据会被永久删除，不可恢复！')">删除</button>
               </form>
@@ -285,6 +299,7 @@ tr:hover td{background:#243349}
         <tr id="edit-{{ t.id }}" style="display:none">
           <td colspan="10" class="addbox">
             <form method="POST" action="/admin/tenant/{{ t.id }}/edit">
+              {{ csrf_field() }}
               <div class="fld"><label>邮箱</label><input class="inp" name="email" type="email" value="{{ t.email }}"></div>
               <div class="fld"><label>公司名</label><input class="inp" name="company_name" value="{{ t.company_name or '' }}"></div>
               <div class="fld"><label>新密码（留空＝不改）</label><input class="inp" name="password" placeholder="留空则不修改密码"></div>
@@ -307,6 +322,21 @@ tr:hover td{background:#243349}
   </div>
 </div>
 <script>
+function csrfToken() {
+  var meta = document.querySelector('meta[name="csrf-token"]');
+  return meta ? meta.getAttribute('content') : '';
+}
+var nativeFetch = window.fetch;
+window.fetch = function(input, init) {
+  init = init || {};
+  var method = (init.method || 'GET').toUpperCase();
+  if (['POST','PUT','PATCH','DELETE'].indexOf(method) >= 0) {
+    var headers = new Headers(init.headers || {});
+    if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken());
+    init.headers = headers;
+  }
+  return nativeFetch(input, init);
+};
 function toggleBox(id){
   var e=document.getElementById(id);
   if(e) e.style.display=(e.style.display==='none'||!e.style.display)?'':'none';

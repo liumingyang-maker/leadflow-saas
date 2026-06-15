@@ -23,6 +23,7 @@
       这个地址是你专属的密钥，别公开发给无关的人。万一泄露可
       <form method="POST" action="/inbound/regenerate" style="display:inline"
             onsubmit="return confirm('重置后旧地址立即失效，已嵌入网站的代码需要替换成新地址，确定？')">
+        {{ csrf_field() }}
         <button type="submit" style="background:none;border:none;color:#dc2626;font-size:12px;cursor:pointer;padding:0;text-decoration:underline">重置地址</button>
       </form>
     </p>

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{{ csrf_meta() }}
 <title>{% block title %}外贸雷达{% endblock %} — {{ session.get('company_name','') }}</title>
 <style>
 :root{
@@ -200,7 +201,7 @@ tr:hover td{background:#fafbfd}
     </a>
   </nav>
   <div class="sidebar-footer">
-    外贸雷达 v1.0 · <a href="/logout">退出登录</a>
+    外贸雷达 v1.0 · <form method="POST" action="/logout" style="display:inline">{{ csrf_field() }}<button type="submit" style="border:0;background:transparent;color:var(--muted);font-size:11px;cursor:pointer;padding:0">退出登录</button></form>
   </div>
 </aside>
 
@@ -235,6 +236,23 @@ tr:hover td{background:#fafbfd}
 <div id="toast"></div>
 <div class="task-bar" id="taskBar"><div id="taskMsg">任务运行中...</div></div>
 <script>
+function csrfToken() {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  return meta ? meta.getAttribute('content') : '';
+}
+(function(){
+  const nativeFetch = window.fetch;
+  window.fetch = function(input, init) {
+    init = init || {};
+    const method = (init.method || 'GET').toUpperCase();
+    if (['POST','PUT','PATCH','DELETE'].includes(method)) {
+      const headers = new Headers(init.headers || {});
+      if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken());
+      init.headers = headers;
+    }
+    return nativeFetch(input, init);
+  };
+})();
 function toast(msg, type='info') {
   const t = document.createElement('div');
   t.className = 'toast-item toast-' + (type==='ok'?'ok':type==='err'?'err':'info');

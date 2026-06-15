@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+{{ csrf_meta() }}
 <title>入驻设置 — 外贸雷达</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -60,6 +61,25 @@ input:focus,select:focus,textarea:focus{
     {% block body %}{% endblock %}
   </div>
 </div>
+<script>
+function csrfToken() {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  return meta ? meta.getAttribute('content') : '';
+}
+(function(){
+  const nativeFetch = window.fetch;
+  window.fetch = function(input, init) {
+    init = init || {};
+    const method = (init.method || 'GET').toUpperCase();
+    if (['POST','PUT','PATCH','DELETE'].includes(method)) {
+      const headers = new Headers(init.headers || {});
+      if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken());
+      init.headers = headers;
+    }
+    return nativeFetch(input, init);
+  };
+})();
+</script>
 {% block extra_script %}{% endblock %}
 </body>
 </html>

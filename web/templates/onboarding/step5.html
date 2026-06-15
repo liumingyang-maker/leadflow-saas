@@ -5,6 +5,7 @@
 <p class="subtitle">系统发开发信时会用这些信息，让客户知道是谁在联系他们。</p>
 
 <form method="POST">
+  {{ csrf_field() }}
   <div class="form-group">
     <label>你的姓名（发件人名字）</label>
     <input type="text" name="sender_name"

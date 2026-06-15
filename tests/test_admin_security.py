@@ -271,7 +271,7 @@ def test_first_login_requires_password_change(clean_admin_db, client, monkeypatc
     assert changed.headers["Location"].endswith("/admin")
     assert clean_admin_db.get_admin_by_email("owner@example.com")["must_change_password"] == 0
 
-    client.get("/admin/logout")
+    client.post("/admin/logout")
     old_login = client.post(
         "/admin/login",
         data={"email": "owner@example.com", "password": STRONG_PASSWORD},

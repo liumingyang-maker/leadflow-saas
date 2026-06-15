@@ -73,6 +73,7 @@ input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
     <div class="sub">用邮箱注册，立即开始挖客户</div>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     <form method="POST">
+      {{ csrf_field() }}
       <label>邮箱</label>
       <input type="email" name="email" placeholder="your@company.com" required autofocus>
       <label>密码</label>

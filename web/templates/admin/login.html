@@ -25,6 +25,7 @@ input:focus{border-color:#2563eb}
   <div class="sub">管理员后台</div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="POST">
+    {{ csrf_field() }}
     <label>管理员邮箱</label>
     <input type="email" name="email" autocomplete="username" required>
     <label>密码</label>

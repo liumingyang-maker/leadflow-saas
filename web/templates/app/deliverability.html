@@ -42,6 +42,7 @@
       一次性猛发大量邮件最容易被判垃圾。设个每日上限；新域名/新账号建议开「预热」——首日 20 封，每天 +10 逐步爬坡。
     </p>
     <form method="POST" action="/deliverability/settings" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+      {{ csrf_field() }}
       <div>
         <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px">每日发送上限</label>
         <input type="number" name="daily_send_cap" value="{{ daily_send_cap }}" placeholder="默认 200" min="1" max="5000"
