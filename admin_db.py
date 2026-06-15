@@ -7,6 +7,7 @@ import uuid
 import hashlib
 import hmac
 import os
+import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -175,6 +176,22 @@ def init():
                 note        TEXT DEFAULT '',
                 created_at  TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS tasks (
+                id            TEXT PRIMARY KEY,
+                tenant_id     TEXT NOT NULL,
+                task_type     TEXT NOT NULL,
+                status        TEXT NOT NULL,
+                progress      INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT,
+                result_json   TEXT,
+                created_at    TEXT NOT NULL,
+                updated_at    TEXT NOT NULL,
+                started_at    TEXT,
+                finished_at   TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id_id
+                ON tasks(tenant_id, id);
         """)
         try:
             conn.execute("ALTER TABLE tenants ADD COLUMN email_verified INTEGER DEFAULT 0")
@@ -229,6 +246,98 @@ def _verify(password: str, stored: str) -> bool:
 def _legacy_admin_password() -> str:
     # Historical weak credential detector only; never used to create or reset admins.
     return "admin" + "123"
+
+
+TASK_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
+
+
+def _task_dict(row: sqlite3.Row) -> dict:
+    data = dict(row)
+    try:
+        data["result"] = json.loads(data.get("result_json") or "{}")
+    except json.JSONDecodeError:
+        data["result"] = {}
+    return data
+
+
+def create_task(tenant_id: str, task_type: str) -> dict:
+    task_id = uuid.uuid4().hex
+    now = _now()
+    result_json = json.dumps({"log": []}, ensure_ascii=False)
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO tasks (
+                   id, tenant_id, task_type, status, progress,
+                   result_json, created_at, updated_at
+               )
+               VALUES (?, ?, ?, 'queued', 0, ?, ?, ?)""",
+            (task_id, tenant_id, task_type, result_json, now, now),
+        )
+    task = get_task_for_tenant(task_id, tenant_id)
+    if task is None:
+        raise RuntimeError("created task could not be loaded")
+    return task
+
+
+def get_task_for_tenant(task_id: str, tenant_id: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM tasks WHERE id=? AND tenant_id=?",
+            (task_id, tenant_id),
+        ).fetchone()
+    return _task_dict(row) if row else None
+
+
+def update_task(
+    task_id: str,
+    tenant_id: str,
+    *,
+    status: str | None = None,
+    progress: int | None = None,
+    result_log: list[str] | None = None,
+    error_message: str | None = None,
+) -> bool:
+    now = _now()
+    fields = {"updated_at": now}
+    if status is not None:
+        if status not in TASK_STATUSES:
+            raise ValueError(f"invalid task status: {status}")
+        fields["status"] = status
+        if status == "running":
+            fields["started_at"] = now
+        if status in {"succeeded", "failed", "cancelled"}:
+            fields["finished_at"] = now
+    if progress is not None:
+        fields["progress"] = max(0, min(100, int(progress)))
+    if result_log is not None:
+        fields["result_json"] = json.dumps({"log": result_log}, ensure_ascii=False)
+    if error_message is not None:
+        fields["error_message"] = error_message[:500]
+
+    assignments = ", ".join(f"{name}=?" for name in fields)
+    values = list(fields.values()) + [task_id, tenant_id]
+    with get_conn() as conn:
+        cur = conn.execute(
+            f"UPDATE tasks SET {assignments} WHERE id=? AND tenant_id=?",
+            values,
+        )
+    return cur.rowcount == 1
+
+
+def task_status_payload(task: dict) -> dict:
+    result = task.get("result") or {}
+    logs = result.get("log") or []
+    public_status = {
+        "succeeded": "done",
+        "failed": "error",
+    }.get(task.get("status"), task.get("status"))
+    if public_status == "error" and task.get("error_message") and not logs:
+        logs = [task["error_message"]]
+    return {
+        "status": public_status,
+        "log": logs,
+        "progress": task.get("progress", 0),
+    }
 
 
 def _validate_admin_password(password: str, current_hash: str = "") -> str:

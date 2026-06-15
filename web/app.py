@@ -1550,35 +1550,18 @@ def import_cards():
 # 任务触发（采集/评分）
 # ─────────────────────────────────────────────────────────
 
-_task_lock   = threading.Lock()
-_task_status = {}
-_TASK_TTL    = 3600  # 1小时后清理旧任务
-
-
-def _cleanup_tasks():
-    cutoff = time.time() - _TASK_TTL
-    with _task_lock:
-        old = [k for k, v in _task_status.items()
-               if v.get("_ts", 0) < cutoff]
-        for k in old:
-            del _task_status[k]
-
-
 @app.route("/run/<step>", methods=["POST"])
 @onboarding_required
 def run_step(step):
     if step not in {"collect", "score", "enrich", "all"}:
         return jsonify({"ok": False, "error": "未知步骤"}), 400
-    _cleanup_tasks()
     tid  = current_tid()
     cfg  = current_cfg()
     # 从 JSON body 获取用户勾选的渠道（collect页面传来），默认全跑
     body     = request.get_json(silent=True) or {}
     channels = body.get("channels", ["importyeti","google","apollo"])
-    task_id  = f"{step}_{datetime.now().strftime('%H%M%S')}_{_uuid.uuid4().hex[:4]}"
-
-    with _task_lock:
-        _task_status[task_id] = {"status": "running", "log": [], "_ts": time.time()}
+    task     = admin_db.create_task(tid, step)
+    task_id  = task["id"]
 
     def run_bg():
         logs      = []
@@ -1590,6 +1573,7 @@ def run_step(step):
             cfg["serpapi_key"] = ""        # 让 google/maps 等渠道优雅跳过 Serper
             logs.append("⚠️ " + _sreason)
         try:
+            admin_db.update_task(task_id, tid, status="running", progress=1)
             from module2_cleaner import DataCleaner
 
             # ── ImportYeti ──────────────────────────────────
@@ -1776,13 +1760,18 @@ def run_step(step):
                 s = LeadScorer(db_path=tenant_ctx.get_db_path(tid)).run(use_ai=False)
                 logs.append(f"AI评分: A={s.get('grade_A',0)} B={s.get('grade_B',0)}")
 
-            with _task_lock:
-                _task_status[task_id] = {"status": "done", "log": logs,
-                                         "_ts": time.time()}
+            admin_db.update_task(
+                task_id, tid, status="succeeded", progress=100, result_log=logs
+            )
         except Exception as e:
-            with _task_lock:
-                _task_status[task_id] = {"status": "error", "log": [str(e)],
-                                         "_ts": time.time()}
+            admin_db.update_task(
+                task_id,
+                tid,
+                status="failed",
+                progress=100,
+                result_log=[str(e)],
+                error_message=str(e),
+            )
 
     threading.Thread(target=run_bg, daemon=True).start()
     return jsonify({"ok": True, "task_id": task_id})
@@ -1791,10 +1780,10 @@ def run_step(step):
 @app.route("/task/<task_id>")
 @login_required
 def task_status(task_id):
-    with _task_lock:
-        data = dict(_task_status.get(task_id, {"status": "not_found"}))
-    data.pop("_ts", None)
-    return jsonify(data)
+    task = admin_db.get_task_for_tenant(task_id, current_tid())
+    if task is None:
+        return jsonify({"ok": False, "error": "task_not_found"}), 404
+    return jsonify(admin_db.task_status_payload(task))
 
 
 # ─────────────────────────────────────────────────────────
@@ -1842,7 +1831,6 @@ def radar_cleanup():
 @app.route("/radar/run", methods=["POST"])
 @onboarding_required
 def radar_run():
-    _cleanup_tasks()
     tid  = current_tid()
     cfg  = current_cfg()
     body = request.get_json(silent=True) or {}
@@ -1886,9 +1874,8 @@ def radar_run():
     if not cfg.get("deepseek_api_key"):
         return jsonify({"ok": False, "error": "渠道雷达需要先在「系统设置」填 DeepSeek API Key"}), 400
 
-    task_id = f"radar_{datetime.now().strftime('%H%M%S')}_{_uuid.uuid4().hex[:4]}"
-    with _task_lock:
-        _task_status[task_id] = {"status": "running", "log": [], "_ts": time.time()}
+    task = admin_db.create_task(tid, "radar")
+    task_id = task["id"]
 
     def run_bg():
         logs = []
@@ -1896,6 +1883,7 @@ def radar_run():
             logs.append("已跳过非竞品网址（门户/平台/社交站，不会扫）："
                         + "、".join(bad_urls[:5]))
         try:
+            admin_db.update_task(task_id, tid, status="running", progress=1)
             from module1_collectors.competitor_radar import CompetitorRadar
             from module2_cleaner import DataCleaner
 
@@ -1983,13 +1971,18 @@ def radar_run():
             if out.get("errors"):
                 logs.append("部分竞品处理出错：" + "；".join(out["errors"][:3]))
 
-            with _task_lock:
-                _task_status[task_id] = {"status": "done", "log": logs,
-                                         "_ts": time.time()}
+            admin_db.update_task(
+                task_id, tid, status="succeeded", progress=100, result_log=logs
+            )
         except Exception as e:
-            with _task_lock:
-                _task_status[task_id] = {"status": "error", "log": [str(e)],
-                                         "_ts": time.time()}
+            admin_db.update_task(
+                task_id,
+                tid,
+                status="failed",
+                progress=100,
+                result_log=[str(e)],
+                error_message=str(e),
+            )
 
     threading.Thread(target=run_bg, daemon=True).start()
     return jsonify({"ok": True, "task_id": task_id})
