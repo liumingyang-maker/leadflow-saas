@@ -36,6 +36,7 @@
 <p class="subtitle">先选择大洲，再排除不想要的国家，系统只在目标范围内挖买家、过滤掉非目标市场的水货。</p>
 
 <form method="POST" id="mainForm">
+  {{ csrf_field() }}
   <!-- 隐藏字段，提交时由 JS 填充 -->
   <input type="hidden" name="selected_regions" id="regionsInput">
   <input type="hidden" name="excluded_countries" id="excludedInput">

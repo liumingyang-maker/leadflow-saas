@@ -13,6 +13,7 @@
 
 <!-- ━━ 第二批：公司 / 产品 / 目标市场（可随时重填，原来只能在入驻向导填）━━ -->
 <form method="POST" id="profileForm">
+  {{ csrf_field() }}
   <input type="hidden" name="save_profile" value="1">
   <input type="hidden" name="selected_regions" id="selRegions">
   <input type="hidden" name="excluded_countries" id="excCountries">
@@ -229,6 +230,7 @@ renderI18n(ppI18nData);
 </script>
 
 <form method="POST">
+{{ csrf_field() }}
 
   <!-- AI（平台已内置，零配置即用）-->
   <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 18px;margin-bottom:14px">

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{{ csrf_meta() }}
 <title>技术架构 — 外贸雷达 管理后台</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -76,7 +77,10 @@ a{text-decoration:none}
   <div class="title">技术架构 · 数据流水线</div>
   <div class="nav">
     <a href="/admin">← 客户管理</a>
-    <a href="/admin/logout">退出</a>
+    <form method="POST" action="/admin/logout" style="display:inline">
+      {{ csrf_field() }}
+      <button type="submit" style="font-size:13px;color:#94a3b8;padding:6px 14px;border:1px solid #334155;border-radius:6px;background:transparent;cursor:pointer">退出</button>
+    </form>
   </div>
 </div>
 

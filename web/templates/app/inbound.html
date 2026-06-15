@@ -13,6 +13,7 @@
   <!-- 专属接收地址 -->
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
     <h3 style="font-size:14px;font-weight:600;margin-bottom:10px;color:#374151">① 你的专属接收地址</h3>
+    {% if token %}
     <div style="display:flex;gap:8px;align-items:center">
       <input id="ep" value="{{ endpoint }}" readonly
              style="flex:1;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;background:#f8fafc">
@@ -23,9 +24,19 @@
       这个地址是你专属的密钥，别公开发给无关的人。万一泄露可
       <form method="POST" action="/inbound/regenerate" style="display:inline"
             onsubmit="return confirm('重置后旧地址立即失效，已嵌入网站的代码需要替换成新地址，确定？')">
+        {{ csrf_field() }}
         <button type="submit" style="background:none;border:none;color:#dc2626;font-size:12px;cursor:pointer;padding:0;text-decoration:underline">重置地址</button>
       </form>
     </p>
+    {% else %}
+    <div data-token-state="missing" style="font-size:13px;color:#6b7280;margin-bottom:12px">
+      Inbound token has not been generated.
+    </div>
+    <form method="POST" action="/inbound/regenerate">
+      {{ csrf_field() }}
+      <button type="submit" style="padding:9px 16px;border:none;background:#2563eb;color:#fff;border-radius:6px;font-size:13px;cursor:pointer">Generate inbound token</button>
+    </form>
+    {% endif %}
   </div>
 
   <!-- 方式一：JS 片段 -->

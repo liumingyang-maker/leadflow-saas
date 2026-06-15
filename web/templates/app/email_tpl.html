@@ -49,6 +49,7 @@
 </div>
 
 <form method="POST">
+{{ csrf_field() }}
 {% for key, tpl in templates.items() %}
 <div class="tpl-panel {% if loop.first %}active{% endif %}" id="panel_{{ key }}">
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px">
@@ -76,10 +77,16 @@
           border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer">
     保存所有模板
   </button>
-  <a href="/email-templates/reset"
-     onclick="return confirm('确认恢复默认模板？')"
-     style="font-size:13px;color:#9ca3af;text-decoration:underline">恢复默认</a>
 </div>
+</form>
+
+<form method="POST" action="/email-templates/reset"
+      onsubmit="return confirm('确认恢复默认模板？')">
+  {{ csrf_field() }}
+  <button type="submit"
+          style="margin-top:10px;font-size:13px;color:#9ca3af;text-decoration:underline;background:transparent;border:0;cursor:pointer;padding:0">
+    恢复默认
+  </button>
 </form>
 
 </div>

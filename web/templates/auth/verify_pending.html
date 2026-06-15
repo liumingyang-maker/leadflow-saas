@@ -53,6 +53,7 @@ p{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:6px}
   <hr class="divider">
   <p style="margin-bottom:12px;font-size:13px;color:#374151">没收到邮件？重新发送：</p>
   <form class="resend-form" method="POST" action="/resend-verify">
+    {{ csrf_field() }}
     <input type="email" name="email" value="{{ email }}"
            placeholder="输入注册邮箱" required>
     <button class="btn" type="submit">重新发送验证邮件</button>

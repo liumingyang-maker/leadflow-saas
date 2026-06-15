@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+{{ csrf_meta() }}
 <title>入驻设置 — 外贸雷达</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -60,6 +61,7 @@ input:focus,select:focus,textarea:focus{
     {% block body %}{% endblock %}
   </div>
 </div>
+{% include "_csrf_fetch.html" %}
 {% block extra_script %}{% endblock %}
 </body>
 </html>

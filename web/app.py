@@ -17,6 +17,8 @@ from datetime import datetime, timedelta, timezone
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, jsonify, send_file, flash, Response)
 from flask_cors import CORS
+from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
+from markupsafe import Markup
 
 BASE = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE))
@@ -67,6 +69,37 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",  # 防 CSRF
     PERMANENT_SESSION_LIFETIME=86400 * 7,  # 7天登录有效期
 )
+csrf = CSRFProtect(app)
+
+
+@app.context_processor
+def inject_csrf_helpers():
+    def csrf_field():
+        return Markup(
+            f'<input type="hidden" name="csrf_token" value="{generate_csrf()}">'
+        )
+
+    def csrf_meta():
+        return Markup(f'<meta name="csrf-token" content="{generate_csrf()}">')
+
+    return {"csrf_field": csrf_field, "csrf_meta": csrf_meta}
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(_error):
+    if request.is_json or request.accept_mimetypes.best == "application/json":
+        return jsonify({"ok": False, "error": "csrf_failed"}), 400
+    return (
+        Response(
+            "<!doctype html><meta charset='utf-8'>"
+            "<div style=\"font:16px/1.6 -apple-system,Segoe UI,'PingFang SC',sans-serif;"
+            "max-width:520px;margin:80px auto;color:#1f2937;padding:0 20px\">"
+            "<h1 style='font-size:20px;margin-bottom:10px'>请求已过期或安全校验失败</h1>"
+            "<p>请刷新页面后重试。</p></div>",
+            mimetype="text/html",
+        ),
+        400,
+    )
 
 
 # ─────────────────────────────────────────────────────────
@@ -403,7 +436,7 @@ def register():
     return render_template("auth/register.html", error=error, plans=PRICING_PLANS)
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
     return redirect(url_for("login"))
@@ -461,7 +494,7 @@ def forgot_password():
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
 def reset_password(token):
     error  = ""
-    result = admin_db.verify_email_token(token, "reset")
+    result = admin_db.inspect_email_token(token, "reset")
     if not result["ok"]:
         return render_template("auth/reset_password.html",
                                token=token, expired=True, error=result["error"])
@@ -473,7 +506,10 @@ def reset_password(token):
         elif pw != pw2:
             error = "两次密码不一致"
         else:
-            admin_db.reset_tenant_password(result["tenant_id"], pw)
+            result = admin_db.reset_tenant_password_with_token(token, pw)
+            if not result["ok"]:
+                return render_template("auth/reset_password.html",
+                                       token=token, expired=True, error=result["error"])
             return redirect(url_for("login") + "?reset=1")
     return render_template("auth/reset_password.html",
                            token=token, expired=False,
@@ -1014,9 +1050,9 @@ def send_lead_whatsapp_api(lead_id):
 @onboarding_required
 def inbound_page():
     tid      = current_tid()
-    token    = admin_db.get_or_create_inbound_token(tid)
+    token    = admin_db.get_inbound_token(tid)
     base     = request.host_url.rstrip("/")
-    endpoint = f"{base}/api/inbound/{token}"
+    endpoint = f"{base}/api/inbound/{token}" if token else ""
     return render_template("app/inbound.html", cfg=current_cfg(),
                            token=token, endpoint=endpoint, base=base)
 
@@ -1037,6 +1073,7 @@ def _cors(resp):
 
 
 @app.route("/api/inbound/<token>", methods=["POST", "OPTIONS"])
+@csrf.exempt  # Public site widget API: protected by per-tenant inbound token + rate limit.
 def api_inbound(token):
     """公开接收接口：客户独立站的询盘表单 POST 到这里，自动入库为线索。"""
     if request.method == "OPTIONS":
@@ -1136,6 +1173,7 @@ def _unsub_url(tid: str, email: str) -> str:
 
 
 @app.route("/u/<token>", methods=["GET", "POST"])
+@csrf.exempt  # Public unsubscribe endpoint: action is authorized by signed itsdangerous token.
 def unsubscribe(token):
     """买家点开发信里的退订链接 → 进该租户抑制名单，永不再发。
     GET 只展示确认页（避免邮件客户端/安全网关预取链接误退订）；
@@ -1429,6 +1467,7 @@ def pay_status(order_id):
 
 
 @app.route("/pay/notify/<provider>", methods=["POST", "GET"])
+@csrf.exempt  # Payment provider callback: protected by provider signature + amount/idempotency checks.
 def pay_notify(provider):
     """支付渠道异步回调（公开）。验签通过且已支付 → 幂等开通账号。"""
     params = request.form.to_dict() or request.args.to_dict()
@@ -2157,7 +2196,7 @@ def email_templates():
                            templates=templates, saved=saved)
 
 
-@app.route("/email-templates/reset")
+@app.route("/email-templates/reset", methods=["POST"])
 @onboarding_required
 def email_templates_reset():
     tid      = current_tid()
@@ -2377,7 +2416,7 @@ def admin_login():
     return render_template("admin/login.html", error=error)
 
 
-@app.route("/admin/logout")
+@app.route("/admin/logout", methods=["POST"])
 def admin_logout():
     session.pop("is_admin", None)
     session.pop("admin_email", None)

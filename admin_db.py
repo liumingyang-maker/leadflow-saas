@@ -525,7 +525,7 @@ def create_email_token(tid: str, email: str, token_type: str) -> str:
     return token
 
 
-def verify_email_token(token: str, token_type: str) -> dict:
+def inspect_email_token(token: str, token_type: str) -> dict:
     if not token or len(token) != 32:
         return {"ok": False, "error": "链接无效"}
     with get_conn() as conn:
@@ -538,9 +538,16 @@ def verify_email_token(token: str, token_type: str) -> dict:
         return {"ok": False, "error": "链接已使用"}
     if row["expires_at"] < _now():
         return {"ok": False, "error": "链接已过期，请重新发送"}
+    return {"ok": True, "tenant_id": row["tenant_id"], "email": row["email"]}
+
+
+def verify_email_token(token: str, token_type: str) -> dict:
+    result = inspect_email_token(token, token_type)
+    if not result["ok"]:
+        return result
     with get_conn() as conn:
         conn.execute("UPDATE email_tokens SET used=1 WHERE token=?", (token,))
-    return {"ok": True, "tenant_id": row["tenant_id"], "email": row["email"]}
+    return result
 
 
 def mark_email_verified(tid: str):
@@ -565,6 +572,54 @@ def reset_tenant_password(tid: str, new_password: str = "reset123"):
                      (_hash(new_password), tid))
 
 
+def reset_tenant_password_with_token(token: str, new_password: str) -> dict:
+    if not token or len(token) != 32:
+        return {"ok": False, "error": "链接无效"}
+    conn = get_conn()
+    try:
+        conn.isolation_level = None
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT * FROM email_tokens WHERE token=? AND type='reset'", (token,)
+        ).fetchone()
+        if not row:
+            conn.rollback()
+            return {"ok": False, "error": "链接无效"}
+        if row["used"]:
+            conn.rollback()
+            return {"ok": False, "error": "链接已使用"}
+        if row["expires_at"] < _now():
+            conn.rollback()
+            return {"ok": False, "error": "链接已过期，请重新发送"}
+        tenant = conn.execute(
+            "SELECT id FROM tenants WHERE id=?", (row["tenant_id"],)
+        ).fetchone()
+        if not tenant:
+            conn.rollback()
+            return {"ok": False, "error": "链接无效"}
+        claimed = conn.execute(
+            "UPDATE email_tokens SET used=1 WHERE token=? AND type='reset' AND used=0",
+            (token,),
+        )
+        if claimed.rowcount != 1:
+            conn.rollback()
+            return {"ok": False, "error": "链接已使用"}
+        updated = conn.execute(
+            "UPDATE tenants SET password_hash=? WHERE id=?",
+            (_hash(new_password), row["tenant_id"]),
+        )
+        if updated.rowcount != 1:
+            conn.rollback()
+            return {"ok": False, "error": "链接无效"}
+        conn.commit()
+        return {"ok": True, "tenant_id": row["tenant_id"], "email": row["email"]}
+    except sqlite3.Error:
+        conn.rollback()
+        return {"ok": False, "error": "链接无效"}
+    finally:
+        conn.close()
+
+
 def is_trial_expired(tenant: dict) -> bool:
     if tenant.get("status") == "active":
         return False
@@ -575,6 +630,14 @@ def is_trial_expired(tenant: dict) -> bool:
 
 
 # ── 独立站询盘 token ──────────────────────────────────────
+
+def get_inbound_token(tid: str) -> str:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT token FROM inbound_tokens WHERE tenant_id=?", (tid,)
+        ).fetchone()
+    return row["token"] if row else ""
+
 
 def get_or_create_inbound_token(tid: str) -> str:
     """返回租户的独立站询盘专属 token，不存在则生成。"""

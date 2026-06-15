@@ -5,6 +5,7 @@
 <p class="subtitle">填完这步，系统会自动匹配适合你行业的采集策略，并用 AI 把你的搜索词描述准——搜得准不准，全看这一步。</p>
 
 <form method="POST" id="step1Form">
+  {{ csrf_field() }}
   <input type="hidden" name="product_profile_json" id="ppJson">
   <div class="form-group">
     <label>公司名称</label>
