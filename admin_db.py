@@ -227,6 +227,7 @@ def _verify(password: str, stored: str) -> bool:
 
 
 def _legacy_admin_password() -> str:
+    # Historical weak credential detector only; never used to create or reset admins.
     return "admin" + "123"
 
 
@@ -319,17 +320,17 @@ def authenticate_admin(email: str, password: str) -> dict:
     admin = get_admin_by_email(email)
     if not admin:
         return {"ok": False, "error_code": "invalid_credentials"}
+    if not _verify(password, admin["password_hash"]):
+        return {"ok": False, "error_code": "invalid_credentials"}
     if (
         email == "admin@leads.com"
-        and _verify(_legacy_admin_password(), admin["password_hash"])
+        and password == _legacy_admin_password()
     ):
         return {
             "ok": False,
             "error_code": "weak_default_password",
             "error": "该管理员仍在使用已公开的旧默认密码，请通过 CLI 重置密码。",
         }
-    if not _verify(password, admin["password_hash"]):
-        return {"ok": False, "error_code": "invalid_credentials"}
     return {"ok": True, "admin": admin}
 
 

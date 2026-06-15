@@ -19,10 +19,31 @@ def clean_admin_db(tmp_path):
     return admin_db
 
 
+@pytest.fixture(autouse=True)
+def clean_rate_limit_state(flask_app):
+    import web.app as web_app
+
+    with web_app._rl._lock:
+        web_app._rl._hits.clear()
+
+
 def _admin_rows(admin_db):
     with admin_db.get_conn() as conn:
         rows = conn.execute("SELECT * FROM admin_users ORDER BY email").fetchall()
     return [dict(row) for row in rows]
+
+
+def _insert_legacy_default_admin(admin_db):
+    with admin_db.get_conn() as conn:
+        conn.execute(
+            "INSERT INTO admin_users (id, email, password_hash, created_at) VALUES (?,?,?,?)",
+            (
+                "legacy",
+                "admin@leads.com",
+                admin_db._hash(LEGACY_PASSWORD),
+                admin_db._now(),
+            ),
+        )
 
 
 def test_empty_database_init_does_not_create_default_admin(clean_admin_db):
@@ -105,16 +126,7 @@ def test_cli_reset_password_changes_only_existing_admin(clean_admin_db, monkeypa
 
 
 def test_existing_default_admin_with_old_password_is_blocked(clean_admin_db):
-    with clean_admin_db.get_conn() as conn:
-        conn.execute(
-            "INSERT INTO admin_users (id, email, password_hash, created_at) VALUES (?,?,?,?)",
-            (
-                "legacy",
-                "admin@leads.com",
-                clean_admin_db._hash(LEGACY_PASSWORD),
-                clean_admin_db._now(),
-            ),
-        )
+    _insert_legacy_default_admin(clean_admin_db)
 
     result = clean_admin_db.authenticate_admin("admin@leads.com", LEGACY_PASSWORD)
 
@@ -131,6 +143,65 @@ def test_existing_default_admin_with_changed_password_can_login(clean_admin_db):
 
     assert result["ok"]
     assert result["admin"]["email"] == "admin@leads.com"
+
+
+def test_legacy_admin_wrong_password_uses_generic_login_failure(clean_admin_db, client):
+    _insert_legacy_default_admin(clean_admin_db)
+
+    response = client.post(
+        "/admin/login",
+        data={"email": "admin@leads.com", "password": "definitely-wrong-password"},
+    )
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "账号或密码错误" in body
+    assert "CLI" not in body
+    assert "旧默认" not in body
+    assert "弱密码" not in body
+    with client.session_transaction() as sess:
+        assert not sess.get("is_admin")
+        assert "admin_must_change_password" not in sess
+
+
+def test_legacy_admin_correct_old_password_is_blocked_without_session(clean_admin_db, client):
+    _insert_legacy_default_admin(clean_admin_db)
+
+    response = client.post(
+        "/admin/login",
+        data={"email": "admin@leads.com", "password": LEGACY_PASSWORD},
+    )
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "CLI" in body
+    assert "重置密码" in body
+    with client.session_transaction() as sess:
+        assert not sess.get("is_admin")
+        assert "admin_must_change_password" not in sess
+
+    blocked = client.get("/admin")
+    assert blocked.status_code == 302
+    assert blocked.headers["Location"].endswith("/admin/login")
+
+
+def test_changed_default_email_admin_can_login_through_route(clean_admin_db, client):
+    assert clean_admin_db.create_admin(
+        "admin@leads.com", STRONG_PASSWORD, must_change_password=False
+    )["ok"]
+
+    response = client.post(
+        "/admin/login",
+        data={"email": "admin@leads.com", "password": STRONG_PASSWORD},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/admin")
+    assert "CLI" not in response.get_data(as_text=True)
+    with client.session_transaction() as sess:
+        assert sess.get("is_admin") is True
+        assert sess.get("admin_email") == "admin@leads.com"
+        assert sess.get("admin_must_change_password") is False
 
 
 def test_old_admin_table_migration_is_repeatable(clean_admin_db, tmp_path):
@@ -159,8 +230,13 @@ def test_old_admin_table_migration_is_repeatable(clean_admin_db, tmp_path):
     assert clean_admin_db.authenticate_admin("owner@example.com", STRONG_PASSWORD)["ok"]
 
 
-def test_first_login_requires_password_change(clean_admin_db, client):
-    assert clean_admin_db.create_admin("owner@example.com", STRONG_PASSWORD)["ok"]
+def test_first_login_requires_password_change(clean_admin_db, client, monkeypatch):
+    from scripts import create_admin
+
+    monkeypatch.setattr("builtins.input", lambda prompt="": "owner@example.com")
+    passwords = iter([STRONG_PASSWORD, STRONG_PASSWORD])
+    monkeypatch.setattr(create_admin.getpass, "getpass", lambda prompt="": next(passwords))
+    assert create_admin.main(["create"]) == 0
 
     login = client.post(
         "/admin/login",
@@ -172,6 +248,10 @@ def test_first_login_requires_password_change(clean_admin_db, client):
     blocked = client.get("/admin")
     assert blocked.status_code == 302
     assert blocked.headers["Location"].endswith("/admin/change-password")
+
+    deep_blocked = client.get("/admin/pipeline")
+    assert deep_blocked.status_code == 302
+    assert deep_blocked.headers["Location"].endswith("/admin/change-password")
 
     same = client.post(
         "/admin/change-password",
@@ -204,3 +284,6 @@ def test_first_login_requires_password_change(clean_admin_db, client):
     )
     assert new_login.status_code == 302
     assert new_login.headers["Location"].endswith("/admin")
+
+    allowed = client.get("/admin/pipeline")
+    assert allowed.status_code == 200
