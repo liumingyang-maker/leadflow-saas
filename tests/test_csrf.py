@@ -465,6 +465,67 @@ def test_reset_password_post_consumes_token_only_after_password_update(client, i
     assert b'name="password"' not in reused.data
 
 
+def test_reset_password_concurrent_double_submit_uses_token_once(isolated_admin_db, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    tid = _create_verified_tenant(isolated_admin_db)
+    token = isolated_admin_db.create_email_token(tid, USER_EMAIL, "reset")
+    password_a = "new-password-thread-a-123"
+    password_b = "new-password-thread-b-456"
+    barrier = threading.Barrier(2)
+    original_inspect = isolated_admin_db.inspect_email_token
+
+    def synced_inspect(token_arg: str, token_type: str) -> dict:
+        result = original_inspect(token_arg, token_type)
+        if token_arg == token and token_type == "reset" and result["ok"]:
+            barrier.wait(timeout=5)
+        return result
+
+    monkeypatch.setattr(isolated_admin_db, "inspect_email_token", synced_inspect)
+
+    def reset_to(password: str):
+        return password, isolated_admin_db.reset_tenant_password_with_token(token, password)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(reset_to, [password_a, password_b]))
+
+    successes = [(password, result) for password, result in results if result["ok"]]
+    failures = [(password, result) for password, result in results if not result["ok"]]
+    assert len(successes) == 1
+    assert len(failures) == 1
+    assert _email_token_used(isolated_admin_db, token) == 1
+
+    success_password = successes[0][0]
+    failed_password = failures[0][0]
+    assert isolated_admin_db.login_tenant(USER_EMAIL, success_password)["ok"]
+    assert not isolated_admin_db.login_tenant(USER_EMAIL, failed_password)["ok"]
+
+
+def test_reset_password_used_token_does_not_change_password(isolated_admin_db):
+    tid = _create_verified_tenant(isolated_admin_db)
+    token = isolated_admin_db.create_email_token(tid, USER_EMAIL, "reset")
+    with isolated_admin_db.get_conn() as conn:
+        conn.execute("UPDATE email_tokens SET used=1 WHERE token=?", (token,))
+    before_hash = isolated_admin_db.get_tenant_by_email(USER_EMAIL)["password_hash"]
+
+    result = isolated_admin_db.reset_tenant_password_with_token(token, "new-password-123")
+
+    assert not result["ok"]
+    assert isolated_admin_db.get_tenant_by_email(USER_EMAIL)["password_hash"] == before_hash
+    assert not isolated_admin_db.login_tenant(USER_EMAIL, "new-password-123")["ok"]
+
+
+def test_reset_password_missing_tenant_rolls_back_token_consume(isolated_admin_db):
+    missing_tid = "missing-tenant-id"
+    token = isolated_admin_db.create_email_token(missing_tid, USER_EMAIL, "reset")
+
+    result = isolated_admin_db.reset_tenant_password_with_token(token, "new-password-123")
+
+    assert not result["ok"]
+    assert _email_token_used(isolated_admin_db, token) == 0
+
+
 def test_inbound_get_does_not_create_token_and_post_requires_csrf(client, isolated_admin_db):
     _login_user(client, isolated_admin_db)
     tid = _complete_onboarding(isolated_admin_db)

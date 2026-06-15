@@ -573,21 +573,51 @@ def reset_tenant_password(tid: str, new_password: str = "reset123"):
 
 
 def reset_tenant_password_with_token(token: str, new_password: str) -> dict:
-    result = inspect_email_token(token, "reset")
-    if not result["ok"]:
-        return result
-    with get_conn() as conn:
-        updated = conn.execute(
-            "UPDATE tenants SET password_hash=? WHERE id=?",
-            (_hash(new_password), result["tenant_id"]),
-        )
-        if updated.rowcount != 1:
-            return inspect_email_token("", "reset")
-        conn.execute(
+    if not token or len(token) != 32:
+        return {"ok": False, "error": "链接无效"}
+    conn = get_conn()
+    try:
+        conn.isolation_level = None
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT * FROM email_tokens WHERE token=? AND type='reset'", (token,)
+        ).fetchone()
+        if not row:
+            conn.rollback()
+            return {"ok": False, "error": "链接无效"}
+        if row["used"]:
+            conn.rollback()
+            return {"ok": False, "error": "链接已使用"}
+        if row["expires_at"] < _now():
+            conn.rollback()
+            return {"ok": False, "error": "链接已过期，请重新发送"}
+        tenant = conn.execute(
+            "SELECT id FROM tenants WHERE id=?", (row["tenant_id"],)
+        ).fetchone()
+        if not tenant:
+            conn.rollback()
+            return {"ok": False, "error": "链接无效"}
+        claimed = conn.execute(
             "UPDATE email_tokens SET used=1 WHERE token=? AND type='reset' AND used=0",
             (token,),
         )
-    return result
+        if claimed.rowcount != 1:
+            conn.rollback()
+            return {"ok": False, "error": "链接已使用"}
+        updated = conn.execute(
+            "UPDATE tenants SET password_hash=? WHERE id=?",
+            (_hash(new_password), row["tenant_id"]),
+        )
+        if updated.rowcount != 1:
+            conn.rollback()
+            return {"ok": False, "error": "链接无效"}
+        conn.commit()
+        return {"ok": True, "tenant_id": row["tenant_id"], "email": row["email"]}
+    except sqlite3.Error:
+        conn.rollback()
+        return {"ok": False, "error": "链接无效"}
+    finally:
+        conn.close()
 
 
 def is_trial_expired(tenant: dict) -> bool:
