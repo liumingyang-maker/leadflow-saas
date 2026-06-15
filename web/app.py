@@ -164,6 +164,11 @@ def admin_required(f):
     def decorated(*args, **kwargs):
         if not session.get("is_admin"):
             return redirect(url_for("admin_login"))
+        if (
+            session.get("admin_must_change_password")
+            and request.endpoint not in {"admin_change_password", "admin_logout"}
+        ):
+            return redirect(url_for("admin_change_password"))
         return f(*args, **kwargs)
     return decorated
 
@@ -2358,18 +2363,45 @@ def admin_login():
     if request.method == "POST":
         email    = request.form.get("email", "")[:120]
         password = request.form.get("password", "")[:128]
-        if admin_db.login_admin(email, password):
+        result = admin_db.authenticate_admin(email, password)
+        if result.get("ok"):
+            admin = result["admin"]
             session["is_admin"]    = True
-            session["admin_email"] = email
+            session["admin_email"] = admin["email"]
+            session["admin_id"] = admin["id"]
+            session["admin_must_change_password"] = bool(admin["must_change_password"])
+            if session["admin_must_change_password"]:
+                return redirect(url_for("admin_change_password"))
             return redirect(url_for("admin_panel"))
-        error = "账号或密码错误"
+        error = result.get("error") or "账号或密码错误"
     return render_template("admin/login.html", error=error)
 
 
 @app.route("/admin/logout")
 def admin_logout():
     session.pop("is_admin", None)
+    session.pop("admin_email", None)
+    session.pop("admin_id", None)
+    session.pop("admin_must_change_password", None)
     return redirect(url_for("admin_login"))
+
+
+@app.route("/admin/change-password", methods=["GET", "POST"])
+@admin_required
+def admin_change_password():
+    error = ""
+    if request.method == "POST":
+        password = request.form.get("password", "")[:128]
+        password2 = request.form.get("password2", "")[:128]
+        if password != password2:
+            error = "两次输入的密码不一致"
+        else:
+            result = admin_db.change_admin_password(session.get("admin_email", ""), password)
+            if result.get("ok"):
+                session["admin_must_change_password"] = False
+                return redirect(url_for("admin_panel"))
+            error = result.get("error") or "密码修改失败"
+    return render_template("admin/change_password.html", error=error)
 
 
 @app.route("/admin")

@@ -38,7 +38,7 @@
 6. 绑定域名：服务的 **Networking/Domains** → 用 Zeabur 送的免费子域名，
    或绑你自己的域名（按提示加一条 CNAME 解析）。HTTPS 自动签发。
 7. 拿到正式网址后，把环境变量 `SITE_URL` 改成这个 https 网址，重新部署一次。
-8. 打开 `网址/` 注册体验；管理后台 `网址/admin`（admin@leads.com / admin123，**登录后请改密码**）。
+8. 部署后先运行 `python -m scripts.create_admin create` 创建管理员，再打开 `网址/` 注册体验和 `网址/admin` 管理后台。
 
 以后改了代码 `git push`，Zeabur 会自动重新部署。
 
@@ -83,7 +83,7 @@ docker run -d --name leadflow --restart always \
 
 ## 四、部署后务必做
 
-- [ ] 改掉管理后台默认密码（admin@leads.com / admin123）。
+- [ ] 使用 `python -m scripts.create_admin create` 创建首个管理员，或用 `python -m scripts.create_admin reset-password` 重置现有管理员密码。
 - [ ] 确认 `SITE_URL` 是最终 https 域名。
 - [ ] 发一封测试注册邮件，确认系统邮件能发出（SMTP 配对）。
 - [ ] **数据备份**：定期把持久卷里的 `admin.db` 和 `tenants/` 打包备份到对象存储
