@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 
 import pytest
@@ -25,6 +26,15 @@ def clean_rate_limit_state(flask_app):
 
     with web_app._rl._lock:
         web_app._rl._hits.clear()
+
+
+def _admin_csrf_token(client) -> str:
+    """Fetch a real CSRF token from the admin login page (same client/session)."""
+    response = client.get("/admin/login")
+    assert response.status_code == 200
+    match = re.search(r'name="csrf_token"\s+value="([^"]+)"', response.get_data(as_text=True))
+    assert match, "admin login page rendered no csrf_token"
+    return match.group(1)
 
 
 def _admin_rows(admin_db):
@@ -150,7 +160,11 @@ def test_legacy_admin_wrong_password_uses_generic_login_failure(clean_admin_db, 
 
     response = client.post(
         "/admin/login",
-        data={"email": "admin@leads.com", "password": "definitely-wrong-password"},
+        data={
+            "email": "admin@leads.com",
+            "password": "definitely-wrong-password",
+            "csrf_token": _admin_csrf_token(client),
+        },
     )
 
     body = response.get_data(as_text=True)
@@ -169,7 +183,11 @@ def test_legacy_admin_correct_old_password_is_blocked_without_session(clean_admi
 
     response = client.post(
         "/admin/login",
-        data={"email": "admin@leads.com", "password": LEGACY_PASSWORD},
+        data={
+            "email": "admin@leads.com",
+            "password": LEGACY_PASSWORD,
+            "csrf_token": _admin_csrf_token(client),
+        },
     )
 
     body = response.get_data(as_text=True)
@@ -192,7 +210,11 @@ def test_changed_default_email_admin_can_login_through_route(clean_admin_db, cli
 
     response = client.post(
         "/admin/login",
-        data={"email": "admin@leads.com", "password": STRONG_PASSWORD},
+        data={
+            "email": "admin@leads.com",
+            "password": STRONG_PASSWORD,
+            "csrf_token": _admin_csrf_token(client),
+        },
     )
 
     assert response.status_code == 302
@@ -238,9 +260,13 @@ def test_first_login_requires_password_change(clean_admin_db, client, monkeypatc
     monkeypatch.setattr(create_admin.getpass, "getpass", lambda prompt="": next(passwords))
     assert create_admin.main(["create"]) == 0
 
+    # CSRF is enabled; the session-bound token is stable across requests for the
+    # same client, so fetch it once from the login page and reuse it.
+    token = _admin_csrf_token(client)
+
     login = client.post(
         "/admin/login",
-        data={"email": "owner@example.com", "password": STRONG_PASSWORD},
+        data={"email": "owner@example.com", "password": STRONG_PASSWORD, "csrf_token": token},
     )
     assert login.status_code == 302
     assert login.headers["Location"].endswith("/admin/change-password")
@@ -258,6 +284,7 @@ def test_first_login_requires_password_change(clean_admin_db, client, monkeypatc
         data={
             "password": STRONG_PASSWORD,
             "password2": STRONG_PASSWORD,
+            "csrf_token": token,
         },
     )
     assert same.status_code == 200
@@ -265,22 +292,22 @@ def test_first_login_requires_password_change(clean_admin_db, client, monkeypatc
 
     changed = client.post(
         "/admin/change-password",
-        data={"password": NEW_PASSWORD, "password2": NEW_PASSWORD},
+        data={"password": NEW_PASSWORD, "password2": NEW_PASSWORD, "csrf_token": token},
     )
     assert changed.status_code == 302
     assert changed.headers["Location"].endswith("/admin")
     assert clean_admin_db.get_admin_by_email("owner@example.com")["must_change_password"] == 0
 
-    client.post("/admin/logout")
+    client.post("/admin/logout", data={"csrf_token": token})
     old_login = client.post(
         "/admin/login",
-        data={"email": "owner@example.com", "password": STRONG_PASSWORD},
+        data={"email": "owner@example.com", "password": STRONG_PASSWORD, "csrf_token": token},
     )
     assert old_login.status_code == 200
 
     new_login = client.post(
         "/admin/login",
-        data={"email": "owner@example.com", "password": NEW_PASSWORD},
+        data={"email": "owner@example.com", "password": NEW_PASSWORD, "csrf_token": token},
     )
     assert new_login.status_code == 302
     assert new_login.headers["Location"].endswith("/admin")

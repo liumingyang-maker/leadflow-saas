@@ -94,7 +94,14 @@ def app_import_thread_guard():
 
 @pytest.fixture(scope="session")
 def flask_app():
-    """加载真实应用（已指向临时 DATA_DIR），返回测试配置后的 Flask app。"""
+    """加载真实应用（已指向临时 DATA_DIR），返回测试配置后的 Flask app。
+
+    CSRF is left ENABLED (WTF_CSRF_ENABLED defaults to True). Tests that issue
+    POST/PUT/PATCH/DELETE through a Flask route must obtain a real CSRF token
+    via ``get_csrf_token`` / ``csrf_post`` helpers below. This keeps the test
+    app faithful to production (P0-002 requirement: tests must not globally
+    bypass CSRF).
+    """
     import admin_db
 
     admin_db.init()  # 在临时目录建好全局库（CREATE TABLE IF NOT EXISTS，幂等）
@@ -106,7 +113,7 @@ def flask_app():
     finally:
         threading.Thread = original_thread
 
-    app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    app.config.update(TESTING=True)
     return app
 
 
@@ -114,3 +121,54 @@ def flask_app():
 def client(flask_app):
     """Flask 测试客户端（进程内，不开真实端口/不走真实网络）。"""
     return flask_app.test_client()
+
+
+# ── CSRF helpers (real Flask-WTF token, same session) ─────────────────────
+# CSRF is enabled in the test app. Any test that posts through a Flask route
+# must fetch a real token with the SAME client/session it then posts with.
+
+
+def get_csrf_token(client, path: str = "/login") -> str:
+    """GET ``path`` with ``client`` and return the real CSRF token rendered in
+    its ``<form>``. The token is bound to this client's session, so the same
+    client must be used for the subsequent POST. Raises AssertionError if the
+    page renders no token (e.g. the path has no CSRF-protected form)."""
+    import re
+
+    response = client.get(path)
+    assert response.status_code == 200, f"{path} -> {response.status_code}"
+    body = response.get_data(as_text=True)
+    match = re.search(r'name="csrf_token"\s+value="([^"]+)"', body)
+    assert match, f"no csrf_token found on {path}"
+    return match.group(1)
+
+
+def csrf_post(client, path, *, data=None, json_body=None, headers=None, token_path=None, **kwargs):
+    """POST ``path`` with a real CSRF token, using the same client/session.
+
+    The token is fetched from ``token_path`` (defaults to a page that renders a
+    token for this route family) via GET. For JSON/AJAX posts the token is sent
+    as the ``X-CSRFToken`` header; for form posts it is added to ``data`` under
+    the ``csrf_token`` key. Extra ``headers``/``kwargs`` are preserved."""
+    token = get_csrf_token(client, token_path or _token_source_for(path))
+
+    if json_body is not None:
+        merged_headers = {"X-CSRFToken": token}
+        if headers:
+            merged_headers.update(headers)
+        return client.post(path, json=json_body, headers=merged_headers, **kwargs)
+
+    merged_data = dict(data or {})
+    merged_data.setdefault("csrf_token", token)
+    return client.post(path, data=merged_data, headers=headers, **kwargs)
+
+
+def _token_source_for(path):
+    """Pick a GET-accessible page that renders a CSRF token for the same route
+    family as ``path``. Most state-changing routes share a page with their own
+    GET form, so fall back to ``path`` itself."""
+    if path == "/admin/logout":
+        # While must_change_password may be set, GET /admin redirects to the
+        # change-password page which renders the token.
+        return "/admin/change-password"
+    return path

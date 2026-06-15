@@ -2193,7 +2193,7 @@ def email_templates():
                            templates=templates, saved=saved)
 
 
-@app.route("/email-templates/reset")
+@app.route("/email-templates/reset", methods=["POST"])
 @onboarding_required
 def email_templates_reset():
     tid      = current_tid()

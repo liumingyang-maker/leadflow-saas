@@ -235,24 +235,8 @@ tr:hover td{background:#fafbfd}
 
 <div id="toast"></div>
 <div class="task-bar" id="taskBar"><div id="taskMsg">任务运行中...</div></div>
+{% include "_csrf_fetch.html" %}
 <script>
-function csrfToken() {
-  const meta = document.querySelector('meta[name="csrf-token"]');
-  return meta ? meta.getAttribute('content') : '';
-}
-(function(){
-  const nativeFetch = window.fetch;
-  window.fetch = function(input, init) {
-    init = init || {};
-    const method = (init.method || 'GET').toUpperCase();
-    if (['POST','PUT','PATCH','DELETE'].includes(method)) {
-      const headers = new Headers(init.headers || {});
-      if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken());
-      init.headers = headers;
-    }
-    return nativeFetch(input, init);
-  };
-})();
 function toast(msg, type='info') {
   const t = document.createElement('div');
   t.className = 'toast-item toast-' + (type==='ok'?'ok':type==='err'?'err':'info');

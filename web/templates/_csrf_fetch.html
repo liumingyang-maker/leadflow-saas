@@ -1,0 +1,70 @@
+{# Shared CSRF fetch wrapper (P0-002).
+
+   Included once per layout via `{% include "_csrf_fetch.html" %}`.
+   Wraps window.fetch so that the X-CSRFToken header is attached ONLY to
+   same-origin unsafe requests (POST/PUT/PATCH/DELETE). Cross-origin requests
+   never receive the token, preventing leakage of the session-bound signed
+   token to third parties.
+
+   Behavior contract:
+   * relative URLs and same-origin absolute URLs -> token attached;
+   * cross-origin absolute URLs -> NO token (even for POST/PUT/PATCH/DELETE);
+   * works for string URLs, URL objects and Request objects;
+   * GET/HEAD never get a token;
+   * a caller-provided X-CSRFToken is never overwritten;
+   * body, credentials, return value and exception behavior are unchanged.
+#}
+<script>
+(function () {
+  function csrfToken() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+  }
+
+  function requestTarget(input) {
+    // Resolve the final request URL as a string, supporting strings, URL
+    // objects and Request objects. Relative URLs resolve against the page.
+    if (input instanceof Request) {
+      return input.url;
+    }
+    return String(input);
+  }
+
+  function isSameOrigin(input) {
+    var targetUrl;
+    try {
+      targetUrl = new URL(requestTarget(input), window.location.href);
+    } catch (e) {
+      // Unparseable target: be conservative and treat as cross-origin so we
+      // never leak the token to an unexpected destination.
+      return false;
+    }
+    return targetUrl.origin === window.location.origin;
+  }
+
+  var UNSAFE = ['POST', 'PUT', 'PATCH', 'DELETE'];
+  var nativeFetch = window.fetch;
+  if (!nativeFetch || nativeFetch.__lfCsrfWrapped) {
+    return;
+  }
+  function wrappedFetch(input, init) {
+    init = init || {};
+    var method = String(init.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    if (UNSAFE.indexOf(method) >= 0 && isSameOrigin(input)) {
+      var headers = new Headers(input instanceof Request ? input.headers : undefined);
+      if (init.headers) {
+        new Headers(init.headers).forEach(function (value, key) {
+          headers.set(key, value);
+        });
+      }
+      if (!headers.has('X-CSRFToken')) {
+        headers.set('X-CSRFToken', csrfToken());
+      }
+      init.headers = headers;
+    }
+    return nativeFetch(input, init);
+  }
+  wrappedFetch.__lfCsrfWrapped = true;
+  window.fetch = wrappedFetch;
+})();
+</script>

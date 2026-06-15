@@ -291,3 +291,161 @@ def test_csrf_exemptions_stay_narrow_and_documented():
     assert "Public site widget API" in source
     assert "Payment provider callback" in source
     assert "Public unsubscribe endpoint" in source
+
+
+# ── Blocking issue 2: GET /email-templates/reset must no longer mutate state ──
+
+
+def _write_custom_templates(client, isolated_admin_db):
+    """Put a marker into the tenant's email_templates.json so we can detect a reset.
+
+    Also marks the tenant's onboarding as complete (onboarding_step >= 3) so the
+    onboarding_required-guarded /email-templates routes are reachable."""
+    import json as _json
+
+    import tenant_ctx
+
+    tid = isolated_admin_db.get_tenant_by_email(USER_EMAIL)["id"]
+    tenant_dir = tenant_ctx.tenant_dir(tid)
+    tenant_dir.mkdir(parents=True, exist_ok=True)
+    # onboarding_step >= 3 satisfies the onboarding_required guard.
+    (tenant_dir / "config.json").write_text(_json.dumps({"onboarding_step": 3}), encoding="utf-8")
+    path = tenant_ctx.get_email_templates_path(tid)
+    path.write_text(_json.dumps({"first_contact": {"subject": "MARKER"}}), encoding="utf-8")
+    return path
+
+
+def test_email_templates_reset_is_post_only_and_does_not_mutate_on_get(client, isolated_admin_db):
+    _login_user(client, isolated_admin_db)
+    path = _write_custom_templates(client, isolated_admin_db)
+
+    # GET must not reset (405 now that the route is POST-only).
+    get_resp = client.get("/email-templates/reset")
+    assert get_resp.status_code == 405
+    assert "MARKER" in path.read_text(encoding="utf-8")
+
+
+def test_email_templates_reset_without_csrf_token_does_not_mutate(client, isolated_admin_db):
+    _login_user(client, isolated_admin_db)
+    path = _write_custom_templates(client, isolated_admin_db)
+
+    resp = client.post("/email-templates/reset")
+    assert resp.status_code == 400
+    assert "MARKER" in path.read_text(encoding="utf-8")
+
+
+def test_email_templates_reset_with_wrong_token_does_not_mutate(client, isolated_admin_db):
+    _login_user(client, isolated_admin_db)
+    path = _write_custom_templates(client, isolated_admin_db)
+
+    resp = client.post("/email-templates/reset", data={"csrf_token": "wrong"})
+    assert resp.status_code == 400
+    assert "MARKER" in path.read_text(encoding="utf-8")
+
+
+def test_email_templates_reset_with_valid_token_resets(client, isolated_admin_db):
+    _login_user(client, isolated_admin_db)
+    path = _write_custom_templates(client, isolated_admin_db)
+    assert "MARKER" in path.read_text(encoding="utf-8")
+
+    token = _csrf_from_page(client, "/email-templates")
+    resp = client.post("/email-templates/reset", data={"csrf_token": token})
+    assert resp.status_code in {302, 303}
+    assert "MARKER" not in path.read_text(encoding="utf-8")
+
+
+def test_email_templates_reset_url_is_post_in_snapshot():
+    snapshot = (REPO_ROOT / "tests" / "snapshots" / "url_map.txt").read_text(encoding="utf-8")
+    assert "POST | /email-templates/reset | email_templates_reset" in snapshot
+    assert "GET | /email-templates/reset" not in snapshot
+
+
+def test_no_state_changing_get_link_to_email_reset():
+    """The reset control must be a POST form, not a state-changing GET <a href>."""
+    tpl = (REPO_ROOT / "web" / "templates" / "app" / "email_tpl.html").read_text(encoding="utf-8")
+    # No bare GET link to the reset endpoint...
+    assert 'href="/email-templates/reset"' not in tpl
+    # ...but there is a POST form with a CSRF token targeting it.
+    assert 'action="/email-templates/reset"' in tpl
+    assert tpl.count("csrf_field()") >= 1
+
+
+# ── Blocking issue 1: fetch wrapper must not leak the CSRF token cross-origin ──
+#
+# We have no headless browser JS engine in CI, so these are static structural
+# assertions: they pin the contract of the shared _csrf_fetch.html partial and
+# prove the three layouts include it (so they cannot drift back to the old
+# origin-blind wrapper). A full functional test of the JS lives in manual review.
+
+FETCH_PARTIAL = REPO_ROOT / "web" / "templates" / "_csrf_fetch.html"
+LAYOUTS_USING_FETCH = [
+    REPO_ROOT / "web" / "templates" / "app" / "base.html",
+    REPO_ROOT / "web" / "templates" / "admin" / "panel.html",
+    REPO_ROOT / "web" / "templates" / "onboarding" / "base.html",
+]
+
+
+def test_fetch_helper_exists_and_is_included_by_all_three_layouts():
+    assert FETCH_PARTIAL.exists(), "shared _csrf_fetch.html partial is missing"
+    source = FETCH_PARTIAL.read_text(encoding="utf-8")
+
+    # Same-origin gate is present...
+    assert "location.origin" in source
+    assert "new URL(" in source
+    # ...on the unsafe-method path only...
+    assert "POST" in source and "PUT" in source and "PATCH" in source and "DELETE" in source
+    # ...and never overwrites a caller-provided token.
+    assert "has('X-CSRFToken')" in source
+    # Must handle Request objects (resolve target URL from input.url).
+    assert "instanceof Request" in source
+
+    for layout in LAYOUTS_USING_FETCH:
+        text = layout.read_text(encoding="utf-8")
+        assert '{% include "_csrf_fetch.html" %}' in text, (
+            f"{layout.name} must include the shared _csrf_fetch.html partial"
+        )
+
+
+def test_fetch_helper_attaches_token_only_same_origin():
+    """The helper must branch on isSameOrigin before attaching the token."""
+    source = FETCH_PARTIAL.read_text(encoding="utf-8")
+
+    # The token is set ONLY inside the same-origin branch: the line that sets
+    # the header must be guarded by the isSameOrigin(input) check.
+    assert "isSameOrigin(input)" in source
+    assert "headers.set('X-CSRFToken'" in source
+    # The same-origin guard resolves the final request URL (string/URL/Request).
+    assert "requestTarget" in source
+
+
+def test_no_origin_blind_fetch_wrapper_remains():
+    """None of the three layouts may keep the old origin-blind wrapper inline."""
+    for layout in LAYOUTS_USING_FETCH:
+        text = layout.read_text(encoding="utf-8")
+        # The old pattern attached the token for every unsafe method with no
+        # origin check; its defining inline csrfToken() helper must be gone now
+        # that the shared partial owns it.
+        assert "function csrfToken()" not in text, (
+            f"{layout.name} still has an inline origin-blind csrfToken/fetch wrapper"
+        )
+
+
+def test_fetch_helper_supports_request_url_and_string_inputs():
+    source = FETCH_PARTIAL.read_text(encoding="utf-8")
+    # String/URL inputs go through String(input); Request inputs use input.url.
+    assert "String(input)" in source
+    assert "input.url" in source
+    # GET/HEAD must never receive a token: only UNSAFE methods are gated.
+    assert "GET" in source  # the default when no method is supplied
+
+
+def test_fetch_helper_preserves_request_and_init_headers():
+    source = FETCH_PARTIAL.read_text(encoding="utf-8")
+
+    # Request objects can carry caller-provided headers. The wrapper may add a
+    # CSRF token for same-origin unsafe requests, but must not discard those
+    # headers or overwrite a token the caller already supplied.
+    assert "input.headers" in source
+    assert "new Headers(input instanceof Request ? input.headers : undefined)" in source
+    assert "new Headers(init.headers)" in source
+    assert "headers.has('X-CSRFToken')" in source

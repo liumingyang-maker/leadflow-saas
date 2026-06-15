@@ -28,7 +28,7 @@ POST | /deliverability/check-domain | deliverability_check_domain
 POST | /deliverability/settings | deliverability_settings
 POST | /deliverability/unsuppress | deliverability_unsuppress
 GET,POST | /email-templates | email_templates
-GET | /email-templates/reset | email_templates_reset
+POST | /email-templates/reset | email_templates_reset
 GET | /export | export_csv
 GET,POST | /forgot-password | forgot_password
 GET | /import | import_page

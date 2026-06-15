@@ -61,25 +61,7 @@ input:focus,select:focus,textarea:focus{
     {% block body %}{% endblock %}
   </div>
 </div>
-<script>
-function csrfToken() {
-  const meta = document.querySelector('meta[name="csrf-token"]');
-  return meta ? meta.getAttribute('content') : '';
-}
-(function(){
-  const nativeFetch = window.fetch;
-  window.fetch = function(input, init) {
-    init = init || {};
-    const method = (init.method || 'GET').toUpperCase();
-    if (['POST','PUT','PATCH','DELETE'].includes(method)) {
-      const headers = new Headers(init.headers || {});
-      if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken());
-      init.headers = headers;
-    }
-    return nativeFetch(input, init);
-  };
-})();
-</script>
+{% include "_csrf_fetch.html" %}
 {% block extra_script %}{% endblock %}
 </body>
 </html>
