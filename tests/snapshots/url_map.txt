@@ -1,5 +1,6 @@
 GET | / | index
 GET | /admin | admin_panel
+GET,POST | /admin/change-password | admin_change_password
 POST | /admin/coupon/<code>/delete | admin_coupon_delete
 POST | /admin/coupon/create | admin_coupon_create
 GET,POST | /admin/login | admin_login

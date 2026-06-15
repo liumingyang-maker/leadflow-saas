@@ -50,7 +50,8 @@ def init():
                 id            TEXT PRIMARY KEY,
                 email         TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
-                created_at    TEXT
+                created_at    TEXT,
+                must_change_password INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS email_tokens (
@@ -195,7 +196,14 @@ def init():
             conn.execute("ALTER TABLE orders ADD COLUMN coupon_code TEXT DEFAULT ''")
         except Exception:
             pass
-    _ensure_admin()
+        try:
+            conn.execute(
+                "ALTER TABLE admin_users "
+                "ADD COLUMN must_change_password INTEGER DEFAULT 0"
+            )
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
 
 
 # ── 密码哈希（PBKDF2 + 随机盐）────────────────────────────
@@ -218,15 +226,111 @@ def _verify(password: str, stored: str) -> bool:
     return hmac.compare_digest(hashlib.sha256(password.encode()).hexdigest(), stored)
 
 
-def _ensure_admin():
-    """确保至少有一个管理员账号"""
+def _legacy_admin_password() -> str:
+    return "admin" + "123"
+
+
+def _validate_admin_password(password: str, current_hash: str = "") -> str:
+    if not password:
+        return "密码不能为空"
+    if len(password) < 12:
+        return "密码至少需要 12 个字符"
+    if password == _legacy_admin_password():
+        return "不能使用已公开的旧默认密码"
+    if current_hash and _verify(password, current_hash):
+        return "新密码不能与当前密码相同"
+    return ""
+
+
+def get_admin_by_email(email: str):
+    email = (email or "").strip().lower()
     with get_conn() as conn:
-        row = conn.execute("SELECT id FROM admin_users LIMIT 1").fetchone()
-        if not row:
-            conn.execute(
-                "INSERT INTO admin_users (id, email, password_hash, created_at) VALUES (?,?,?,?)",
-                (str(uuid.uuid4()), "admin@leads.com", _hash("admin123"), _now())
-            )
+        row = conn.execute("SELECT * FROM admin_users WHERE email=?", (email,)).fetchone()
+    return dict(row) if row else None
+
+
+def create_admin(email: str, password: str, must_change_password: bool = True) -> dict:
+    email = (email or "").strip().lower()
+    if not email or "@" not in email:
+        return {"ok": False, "error": "请输入有效管理员邮箱"}
+    error = _validate_admin_password(password)
+    if error:
+        return {"ok": False, "error": error}
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM admin_users WHERE email=?", (email,)
+        ).fetchone()
+        if existing:
+            return {"ok": False, "error": "管理员邮箱已存在"}
+        admin_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO admin_users
+                (id, email, password_hash, created_at, must_change_password)
+            VALUES (?,?,?,?,?)
+            """,
+            (admin_id, email, _hash(password), _now(), 1 if must_change_password else 0),
+        )
+    return {"ok": True, "admin_id": admin_id}
+
+
+def reset_admin_password(email: str, password: str) -> dict:
+    email = (email or "").strip().lower()
+    admin = get_admin_by_email(email)
+    if not admin:
+        return {"ok": False, "error": "管理员不存在"}
+    error = _validate_admin_password(password, admin["password_hash"])
+    if error:
+        return {"ok": False, "error": error}
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE admin_users
+            SET password_hash=?, must_change_password=1
+            WHERE email=?
+            """,
+            (_hash(password), email),
+        )
+    return {"ok": True}
+
+
+def change_admin_password(email: str, password: str) -> dict:
+    email = (email or "").strip().lower()
+    admin = get_admin_by_email(email)
+    if not admin:
+        return {"ok": False, "error": "管理员不存在"}
+    error = _validate_admin_password(password, admin["password_hash"])
+    if error:
+        return {"ok": False, "error": error}
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE admin_users
+            SET password_hash=?, must_change_password=0
+            WHERE email=?
+            """,
+            (_hash(password), email),
+        )
+    return {"ok": True}
+
+
+def authenticate_admin(email: str, password: str) -> dict:
+    email = (email or "").strip().lower()
+    admin = get_admin_by_email(email)
+    if not admin:
+        return {"ok": False, "error_code": "invalid_credentials"}
+    if (
+        email == "admin@leads.com"
+        and _verify(_legacy_admin_password(), admin["password_hash"])
+    ):
+        return {
+            "ok": False,
+            "error_code": "weak_default_password",
+            "error": "该管理员仍在使用已公开的旧默认密码，请通过 CLI 重置密码。",
+        }
+    if not _verify(password, admin["password_hash"]):
+        return {"ok": False, "error_code": "invalid_credentials"}
+    return {"ok": True, "admin": admin}
 
 
 # ── 租户操作 ──────────────────────────────────────────────
@@ -296,13 +400,7 @@ def login_tenant(email: str, password: str) -> dict:
 
 
 def login_admin(email: str, password: str) -> bool:
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT password_hash FROM admin_users WHERE email=?", (email,)
-        ).fetchone()
-    if not row:
-        return False
-    return _verify(password, row["password_hash"])
+    return bool(authenticate_admin(email, password).get("ok"))
 
 
 def get_tenant_by_email(email: str):
