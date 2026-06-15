@@ -315,6 +315,34 @@ def _write_custom_templates(client, isolated_admin_db):
     return path
 
 
+def _complete_onboarding(isolated_admin_db):
+    import json as _json
+
+    import tenant_ctx
+
+    tid = isolated_admin_db.get_tenant_by_email(USER_EMAIL)["id"]
+    tenant_dir = tenant_ctx.tenant_dir(tid)
+    tenant_dir.mkdir(parents=True, exist_ok=True)
+    (tenant_dir / "config.json").write_text(_json.dumps({"onboarding_step": 3}), encoding="utf-8")
+    return tid
+
+
+def _email_token_used(admin_db, token: str) -> int:
+    with admin_db.get_conn() as conn:
+        row = conn.execute("SELECT used FROM email_tokens WHERE token=?", (token,)).fetchone()
+    assert row is not None
+    return int(row["used"])
+
+
+def _inbound_tokens(admin_db, tid: str) -> list[str]:
+    with admin_db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT token FROM inbound_tokens WHERE tenant_id=? ORDER BY token",
+            (tid,),
+        ).fetchall()
+    return [row["token"] for row in rows]
+
+
 def test_email_templates_reset_is_post_only_and_does_not_mutate_on_get(client, isolated_admin_db):
     _login_user(client, isolated_admin_db)
     path = _write_custom_templates(client, isolated_admin_db)
@@ -368,6 +396,116 @@ def test_no_state_changing_get_link_to_email_reset():
     # ...but there is a POST form with a CSRF token targeting it.
     assert 'action="/email-templates/reset"' in tpl
     assert tpl.count("csrf_field()") >= 1
+
+
+def test_reset_password_get_and_failed_posts_do_not_consume_token(client, isolated_admin_db):
+    tid = _create_verified_tenant(isolated_admin_db)
+    token = isolated_admin_db.create_email_token(tid, USER_EMAIL, "reset")
+    before_hash = isolated_admin_db.get_tenant_by_email(USER_EMAIL)["password_hash"]
+
+    first_get = client.get(f"/reset-password/{token}")
+    second_get = client.get(f"/reset-password/{token}")
+    assert first_get.status_code == 200
+    assert second_get.status_code == 200
+    assert _email_token_used(isolated_admin_db, token) == 0
+
+    missing_csrf = client.post(
+        f"/reset-password/{token}",
+        data={"password": "new-password-123", "password2": "new-password-123"},
+    )
+    assert missing_csrf.status_code == 400
+    assert _email_token_used(isolated_admin_db, token) == 0
+
+    wrong_csrf = client.post(
+        f"/reset-password/{token}",
+        data={
+            "password": "new-password-123",
+            "password2": "new-password-123",
+            "csrf_token": "wrong",
+        },
+    )
+    assert wrong_csrf.status_code == 400
+    assert _email_token_used(isolated_admin_db, token) == 0
+
+    csrf_token = _csrf_from_page(client, f"/reset-password/{token}")
+    mismatch = client.post(
+        f"/reset-password/{token}",
+        data={
+            "password": "new-password-123",
+            "password2": "different-password-123",
+            "csrf_token": csrf_token,
+        },
+    )
+    assert mismatch.status_code == 200
+    assert _email_token_used(isolated_admin_db, token) == 0
+    assert isolated_admin_db.get_tenant_by_email(USER_EMAIL)["password_hash"] == before_hash
+
+
+def test_reset_password_post_consumes_token_only_after_password_update(client, isolated_admin_db):
+    tid = _create_verified_tenant(isolated_admin_db)
+    token = isolated_admin_db.create_email_token(tid, USER_EMAIL, "reset")
+    csrf_token = _csrf_from_page(client, f"/reset-password/{token}")
+
+    changed = client.post(
+        f"/reset-password/{token}",
+        data={
+            "password": "new-password-123",
+            "password2": "new-password-123",
+            "csrf_token": csrf_token,
+        },
+    )
+
+    assert changed.status_code in {302, 303}
+    assert _email_token_used(isolated_admin_db, token) == 1
+    assert not isolated_admin_db.login_tenant(USER_EMAIL, USER_PASSWORD)["ok"]
+    assert isolated_admin_db.login_tenant(USER_EMAIL, "new-password-123")["ok"]
+
+    reused = client.get(f"/reset-password/{token}")
+    assert reused.status_code == 200
+    assert b'name="password"' not in reused.data
+
+
+def test_inbound_get_does_not_create_token_and_post_requires_csrf(client, isolated_admin_db):
+    _login_user(client, isolated_admin_db)
+    tid = _complete_onboarding(isolated_admin_db)
+    assert _inbound_tokens(isolated_admin_db, tid) == []
+
+    page = client.get("/inbound")
+    assert page.status_code == 200
+    assert b'data-token-state="missing"' in page.data
+    assert _inbound_tokens(isolated_admin_db, tid) == []
+
+    missing_csrf = client.post("/inbound/regenerate")
+    assert missing_csrf.status_code == 400
+    assert _inbound_tokens(isolated_admin_db, tid) == []
+
+    wrong_csrf = client.post("/inbound/regenerate", data={"csrf_token": "wrong"})
+    assert wrong_csrf.status_code == 400
+    assert _inbound_tokens(isolated_admin_db, tid) == []
+
+    csrf_token = _csrf_from_page(client, "/inbound")
+    created = client.post("/inbound/regenerate", data={"csrf_token": csrf_token})
+    assert created.status_code in {302, 303}
+    tokens = _inbound_tokens(isolated_admin_db, tid)
+    assert len(tokens) == 1
+
+    with_token = client.get("/inbound")
+    assert with_token.status_code == 200
+    assert tokens[0].encode() in with_token.data
+
+
+def test_inbound_post_with_valid_csrf_rotates_existing_token(client, isolated_admin_db):
+    _login_user(client, isolated_admin_db)
+    tid = _complete_onboarding(isolated_admin_db)
+    original = isolated_admin_db.regenerate_inbound_token(tid)
+
+    csrf_token = _csrf_from_page(client, "/inbound")
+    rotated = client.post("/inbound/regenerate", data={"csrf_token": csrf_token})
+
+    assert rotated.status_code in {302, 303}
+    tokens = _inbound_tokens(isolated_admin_db, tid)
+    assert len(tokens) == 1
+    assert tokens[0] != original
 
 
 # ── Blocking issue 1: fetch wrapper must not leak the CSRF token cross-origin ──

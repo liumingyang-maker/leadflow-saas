@@ -494,7 +494,7 @@ def forgot_password():
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
 def reset_password(token):
     error  = ""
-    result = admin_db.verify_email_token(token, "reset")
+    result = admin_db.inspect_email_token(token, "reset")
     if not result["ok"]:
         return render_template("auth/reset_password.html",
                                token=token, expired=True, error=result["error"])
@@ -506,7 +506,10 @@ def reset_password(token):
         elif pw != pw2:
             error = "两次密码不一致"
         else:
-            admin_db.reset_tenant_password(result["tenant_id"], pw)
+            result = admin_db.reset_tenant_password_with_token(token, pw)
+            if not result["ok"]:
+                return render_template("auth/reset_password.html",
+                                       token=token, expired=True, error=result["error"])
             return redirect(url_for("login") + "?reset=1")
     return render_template("auth/reset_password.html",
                            token=token, expired=False,
@@ -1047,9 +1050,9 @@ def send_lead_whatsapp_api(lead_id):
 @onboarding_required
 def inbound_page():
     tid      = current_tid()
-    token    = admin_db.get_or_create_inbound_token(tid)
+    token    = admin_db.get_inbound_token(tid)
     base     = request.host_url.rstrip("/")
-    endpoint = f"{base}/api/inbound/{token}"
+    endpoint = f"{base}/api/inbound/{token}" if token else ""
     return render_template("app/inbound.html", cfg=current_cfg(),
                            token=token, endpoint=endpoint, base=base)
 
