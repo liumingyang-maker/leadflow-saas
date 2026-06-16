@@ -1773,7 +1773,18 @@ def run_step(step):
                 error_message=str(e),
             )
 
-    threading.Thread(target=run_bg, daemon=True).start()
+    try:
+        threading.Thread(target=run_bg, daemon=True).start()
+    except Exception as e:
+        admin_db.update_task(
+            task_id,
+            tid,
+            status="failed",
+            progress=100,
+            result_log=[str(e)],
+            error_message=str(e),
+        )
+        return jsonify({"ok": False, "error": "task_start_failed", "task_id": task_id}), 500
     return jsonify({"ok": True, "task_id": task_id})
 
 
@@ -1984,7 +1995,18 @@ def radar_run():
                 error_message=str(e),
             )
 
-    threading.Thread(target=run_bg, daemon=True).start()
+    try:
+        threading.Thread(target=run_bg, daemon=True).start()
+    except Exception as e:
+        admin_db.update_task(
+            task_id,
+            tid,
+            status="failed",
+            progress=100,
+            result_log=[str(e)],
+            error_message=str(e),
+        )
+        return jsonify({"ok": False, "error": "task_start_failed", "task_id": task_id}), 500
     return jsonify({"ok": True, "task_id": task_id})
 
 

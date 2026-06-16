@@ -249,6 +249,27 @@ def _legacy_admin_password() -> str:
 
 
 TASK_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
+TERMINAL_TASK_STATUSES = {"succeeded", "failed", "cancelled"}
+
+
+def _sanitize_task_error(message: str) -> str:
+    text = (message or "").strip()
+    if not text:
+        return "任务执行失败"
+    lowered = text.lower()
+    sensitive_markers = (
+        "secret",
+        "token",
+        "key",
+        "password",
+        "admin.db",
+        "traceback",
+        "c:/",
+        "c:\\",
+    )
+    if any(marker in lowered for marker in sensitive_markers):
+        return "任务执行失败，请稍后重试或联系管理员"
+    return text[:200]
 
 
 def _task_dict(row: sqlite3.Row) -> dict:
@@ -261,6 +282,10 @@ def _task_dict(row: sqlite3.Row) -> dict:
 
 
 def create_task(tenant_id: str, task_type: str) -> dict:
+    if not (tenant_id or "").strip():
+        raise ValueError("tenant_id is required")
+    if not (task_type or "").strip():
+        raise ValueError("task_type is required")
     task_id = uuid.uuid4().hex
     now = _now()
     result_json = json.dumps({"log": []}, ensure_ascii=False)
@@ -298,6 +323,21 @@ def update_task(
     error_message: str | None = None,
 ) -> bool:
     now = _now()
+    with get_conn() as conn:
+        current = conn.execute(
+            "SELECT status FROM tasks WHERE id=? AND tenant_id=?",
+            (task_id, tenant_id),
+        ).fetchone()
+        if current is None:
+            return False
+        current_status = current["status"]
+        if (
+            status is not None
+            and current_status in TERMINAL_TASK_STATUSES
+            and status != current_status
+        ):
+            return False
+
     fields = {"updated_at": now}
     if status is not None:
         if status not in TASK_STATUSES:
@@ -310,9 +350,11 @@ def update_task(
     if progress is not None:
         fields["progress"] = max(0, min(100, int(progress)))
     if result_log is not None:
+        if status == "failed":
+            result_log = [_sanitize_task_error(item) for item in result_log]
         fields["result_json"] = json.dumps({"log": result_log}, ensure_ascii=False)
     if error_message is not None:
-        fields["error_message"] = error_message[:500]
+        fields["error_message"] = _sanitize_task_error(error_message)
 
     assignments = ", ".join(f"{name}=?" for name in fields)
     values = list(fields.values()) + [task_id, tenant_id]
