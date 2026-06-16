@@ -6,6 +6,7 @@ import os
 import re
 import json
 import time
+import ipaddress
 import threading
 import uuid as _uuid
 import csv as _csv
@@ -13,6 +14,7 @@ from pathlib import Path
 from functools import wraps
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, jsonify, send_file, flash, Response)
@@ -911,8 +913,11 @@ def send_lead_email(lead_id):
         try:
             trk_id = admin_db.create_tracking(tid, lead_id, subject)
             base = request.host_url.rstrip("/")
-            tracking = {"open_url": f"{base}/t/o/{trk_id}.gif",
-                        "click_base": f"{base}/t/c/{trk_id}?u="}
+            tracking = {
+                "open_url": f"{base}/t/o/{trk_id}.gif",
+                "click_base": f"{base}/t/c/{trk_id}?u=",
+                "click_signer": lambda url, trk_id=trk_id: _click_token(trk_id, url),
+            }
         except Exception as e:
             print(f"[send-email] 追踪创建失败: {e}")
     # 退订链接 + 页脚（List-Unsubscribe 头 + 正文可见退订入口）
@@ -1133,6 +1138,55 @@ _PIXEL = (b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00"
           b"\x00\x00\x02\x02D\x01\x00;")
 
 
+def _click_serializer():
+    from itsdangerous import URLSafeSerializer
+    return URLSafeSerializer(app.secret_key, salt="click-redirect")
+
+
+def _click_token(tracking_id: str, target_url: str) -> str:
+    return _click_serializer().dumps({"i": tracking_id, "u": target_url})
+
+
+def _is_safe_click_target(target_url: str) -> bool:
+    try:
+        parsed = urlparse(target_url)
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    host = (parsed.hostname or "").rstrip(".").lower()
+    if not host or host == "localhost" or host.endswith((".localhost", ".local")):
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _verified_click_target(tracking_id: str, target_url: str, signature: str) -> str:
+    if not target_url or not signature:
+        return ""
+    try:
+        data = _click_serializer().loads(signature)
+    except Exception:
+        return ""
+    if data.get("i") != tracking_id or data.get("u") != target_url:
+        return ""
+    return target_url if _is_safe_click_target(target_url) else ""
+
+
+def _unsafe_click_response():
+    return Response("链接不可用或已过期", status=400, mimetype="text/plain")
+
+
 @app.route("/t/o/<tracking_id>.gif")
 def track_open(tracking_id):
     try:
@@ -1147,13 +1201,17 @@ def track_open(tracking_id):
 
 @app.route("/t/c/<tracking_id>")
 def track_click(tracking_id):
+    target = _verified_click_target(
+        tracking_id,
+        request.args.get("u", ""),
+        request.args.get("sig", ""),
+    )
+    if not target:
+        return _unsafe_click_response()
     try:
         admin_db.record_click(tracking_id)
     except Exception as e:
         print(f"[track] click 记录失败: {e}")
-    target = request.args.get("u", "")
-    if not target.startswith(("http://", "https://")):
-        target = "https://" + target if target else "/"
     return redirect(target)
 
 
@@ -2759,8 +2817,11 @@ def process_due_followups() -> int:
             base = _public_base()
             if cfg.get("mail_channel", "smtp") == "smtp" and base:
                 trk = admin_db.create_tracking(tid, lead_id, subject)
-                tracking = {"open_url": f"{base}/t/o/{trk}.gif",
-                            "click_base": f"{base}/t/c/{trk}?u="}
+                tracking = {
+                    "open_url": f"{base}/t/o/{trk}.gif",
+                    "click_base": f"{base}/t/c/{trk}?u=",
+                    "click_signer": lambda url, trk=trk: _click_token(trk, url),
+                }
 
             unsub_url = _unsub_url(tid, to)
             send_body = body + (f"\n\n———\nIf you no longer wish to receive these "

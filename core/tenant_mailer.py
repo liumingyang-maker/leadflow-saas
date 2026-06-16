@@ -201,13 +201,17 @@ class TenantMailer:
         """
         open_url = tracking.get("open_url")
         click_base = tracking.get("click_base")
+        click_signer = tracking.get("click_signer")
         if click_base:
             def _wrap(m):
                 url = m.group(1)
                 if url.startswith(("mailto:", "tel:", "#")):
                     return m.group(0)
                 from urllib.parse import quote
-                return f'href="{click_base}{quote(url, safe="")}"'
+                href = f'{click_base}{quote(url, safe="")}'
+                if callable(click_signer):
+                    href += f'&sig={quote(click_signer(url), safe="")}'
+                return f'href="{href}"'
             html = re.sub(r'href="([^"]+)"', _wrap, html)
         if open_url:
             html += (f'<img src="{open_url}" width="1" height="1" '
