@@ -6,12 +6,125 @@ tenant_ctx.py — 租户上下文
 import json
 import sys
 import os
+import base64
+import hashlib
 from pathlib import Path
+from cryptography.fernet import Fernet, InvalidToken
 
 BASE = Path(__file__).parent
 
 # 数据目录：默认项目根目录；部署挂载持久卷时用环境变量 DATA_DIR 指向卷（如 /data）
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE)))
+
+SECRET_FIELDS = {
+    "importyeti_api_key",
+    "serpapi_key",
+    "hunter_api_key",
+    "deepseek_api_key",
+    "anthropic_api_key",
+    "apollo_api_key",
+    "youtube_api_key",
+    "apify_token",
+    "radar_proxy",
+    "smtp_pass",
+    "esp_api_key",
+    "wa_auth_token",
+    "wa_api_key",
+    "wa_token",
+}
+SECRET_PREFIX = "enc:v1:"
+
+
+class SecretStoreError(RuntimeError):
+    pass
+
+
+def _secret_key_material() -> str:
+    key = os.environ.get("TENANT_SECRET_KEY") or os.environ.get("SECRET_KEY")
+    if key:
+        return key
+    env = (
+        os.environ.get("APP_ENV")
+        or os.environ.get("FLASK_ENV")
+        or os.environ.get("ENV")
+        or ""
+    ).strip().lower()
+    key_file = DATA_DIR / "secret_key.bin"
+    if env not in {"prod", "production"} and key_file.exists():
+        return key_file.read_bytes().hex()
+    raise SecretStoreError("TENANT_SECRET_KEY or SECRET_KEY is required for tenant secrets")
+
+
+def _fernet_for(key: str) -> Fernet:
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _fernet() -> Fernet:
+    return _fernet_for(_secret_key_material())
+
+
+def _decrypt_fernets() -> list[Fernet]:
+    fernets = [_fernet()]
+    previous = os.environ.get("TENANT_SECRET_KEY_PREVIOUS", "").strip()
+    if previous:
+        fernets.append(_fernet_for(previous))
+    return fernets
+
+
+def _is_encrypted_secret(value) -> bool:
+    return isinstance(value, str) and value.startswith(SECRET_PREFIX)
+
+
+def _encrypt_secret(value: str) -> str:
+    token = _fernet().encrypt(value.encode("utf-8")).decode("ascii")
+    return SECRET_PREFIX + token
+
+
+def _decrypt_secret(field: str, value: str) -> str:
+    token = value[len(SECRET_PREFIX):].encode("ascii")
+    last_error = None
+    for fernet in _decrypt_fernets():
+        try:
+            return fernet.decrypt(token).decode("utf-8")
+        except (InvalidToken, ValueError, UnicodeDecodeError) as exc:
+            last_error = exc
+    raise SecretStoreError(f"Unable to decrypt tenant secret: {field}") from last_error
+
+
+def _decrypt_config(cfg: dict) -> dict:
+    out = dict(cfg)
+    for field in SECRET_FIELDS:
+        value = out.get(field)
+        if _is_encrypted_secret(value):
+            out[field] = _decrypt_secret(field, value)
+    return out
+
+
+def _encrypt_config(cfg: dict) -> dict:
+    out = dict(cfg)
+    for field in SECRET_FIELDS:
+        value = out.get(field)
+        if isinstance(value, str) and value and not _is_encrypted_secret(value):
+            out[field] = _encrypt_secret(value)
+    return out
+
+
+def secret_label(value: str) -> str:
+    if not value:
+        return ""
+    return f"saved: ****{value[-4:]}"
+
+
+def mask_config_secrets(cfg: dict) -> tuple[dict, dict]:
+    masked = dict(cfg)
+    labels = {}
+    for field in SECRET_FIELDS:
+        value = masked.get(field)
+        if isinstance(value, str) and value:
+            labels[field] = secret_label(value)
+            masked[field] = ""
+    return masked, labels
 
 # 核心模块路径（core/ 目录）
 CORE_PATH = Path(__file__).parent / "core"
@@ -26,14 +139,15 @@ def tenant_dir(tid: str) -> Path:
 def load_config(tid: str) -> dict:
     cfg_path = tenant_dir(tid) / "config.json"
     if cfg_path.exists():
-        return json.loads(cfg_path.read_text(encoding="utf-8"))
+        return _decrypt_config(json.loads(cfg_path.read_text(encoding="utf-8")))
     return {}
 
 
 def save_config(tid: str, cfg: dict):
     cfg_path = tenant_dir(tid) / "config.json"
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(
-        json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(_encrypt_config(cfg), ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
 

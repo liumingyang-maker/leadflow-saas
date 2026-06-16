@@ -21,3 +21,4 @@ python-dotenv>=1.0
 # AI（DeepSeek/Claude 走 requests，这两个为可选/备用）
 anthropic>=0.28
 openai>=1.30
+cryptography>=42.0
