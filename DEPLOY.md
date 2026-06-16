@@ -15,6 +15,8 @@
 | `SMTP_PASS` | 该邮箱的 SMTP 授权码 | ✅ |
 | `SITE_URL` | 部署后的公网网址，如 `https://leadflow.xxx.com`（**末尾不要斜杠**） | ✅ |
 | `SECRET_KEY` | 一段长随机字符串（固定不变，别人不知道即可） | ✅ |
+| `TENANT_SECRET_KEY` | 租户 API Key/SMTP 授权码加密密钥，必须固定保存且不要放进数据备份 | ✅ |
+| `TENANT_SECRET_KEY_PREVIOUS` | 轮换密钥时临时填写旧密钥，确认配置已重保存后删除 | ⬜ |
 | `APP_ENV` | 生产环境填 `production`，会启用 Secure Cookie；本地/测试可不填 | ✅ |
 | `TRUST_PROXY_HEADERS` | 只有应用前面有可信反向代理时才填 `true` | ⬜ |
 | `TRUSTED_PROXY_HOPS` | 可信代理层数，常见 Nginx 直连填 `1` | ⬜ |
@@ -64,6 +66,7 @@ SMTP_USER=你的邮箱
 SMTP_PASS=你的SMTP授权码
 SITE_URL=https://你的域名
 SECRET_KEY=换成一长串随机字符
+TENANT_SECRET_KEY=换成另一长串随机字符
 APP_ENV=production
 TRUST_PROXY_HEADERS=true
 TRUSTED_PROXY_HOPS=1
@@ -93,6 +96,7 @@ docker run -d --name leadflow --restart always \
 - [ ] 使用 `python -m scripts.create_admin create` 创建首个管理员，或用 `python -m scripts.create_admin reset-password` 重置现有管理员密码。
 - [ ] 确认 `SITE_URL` 是最终 https 域名。
 - [ ] 确认生产环境设置 `APP_ENV=production`，并且只在可信反向代理后启用 `TRUST_PROXY_HEADERS=true`。
+- [ ] 确认 `TENANT_SECRET_KEY` 已安全保存；备份 `/data` 时不要把这个密钥打进备份包。
 - [ ] 发一封测试注册邮件，确认系统邮件能发出（SMTP 配对）。
 - [ ] **数据备份**：定期把持久卷里的 `admin.db` 和 `tenants/` 打包备份到对象存储
       （客户数据是命根子，别只存一份）。

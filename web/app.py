@@ -2268,6 +2268,14 @@ def product_profile_generate():
     return jsonify(res)
 
 
+def _render_settings(cfg: dict, *, saved: bool = False):
+    display_cfg, secret_labels = tenant_ctx.mask_config_secrets(cfg)
+    return render_template("app/settings.html", cfg=display_cfg, saved=saved,
+                           secret_labels=secret_labels,
+                           regions=tenant_ctx.REGIONS,
+                           industries=tenant_ctx.INDUSTRY_OPTIONS)
+
+
 @app.route("/settings", methods=["GET", "POST"])
 @onboarding_required
 def settings():
@@ -2309,9 +2317,7 @@ def settings():
             admin_db.update_tenant(tid, company_name=cfg["company_name"],
                                    industry=cfg["industry"])
             tenant_ctx.save_config(tid, cfg)
-            return render_template("app/settings.html", cfg=cfg, saved=True,
-                                   regions=tenant_ctx.REGIONS,
-                                   industries=tenant_ctx.INDUSTRY_OPTIONS)
+            return _render_settings(cfg, saved=True)
         for k in ("importyeti_api_key", "serpapi_key", "hunter_api_key",
                   "deepseek_api_key", "anthropic_api_key", "apollo_api_key",
                   "youtube_api_key", "apify_token", "radar_proxy",
@@ -2353,9 +2359,7 @@ def settings():
         tenant_ctx.save_config(tid, cfg)
         session["company_name"] = cfg.get("company_name", "")
         saved = True
-    return render_template("app/settings.html", cfg=cfg, saved=saved,
-                           regions=tenant_ctx.REGIONS,
-                           industries=tenant_ctx.INDUSTRY_OPTIONS)
+    return _render_settings(cfg, saved=saved)
 
 
 # ─────────────────────────────────────────────────────────
