@@ -17,10 +17,11 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 from flask import (Flask, render_template, request, redirect,
-                   url_for, session, jsonify, send_file, flash, Response)
+                   url_for, session, jsonify, send_file, flash, Response, g)
 from flask_cors import CORS
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 from markupsafe import Markup
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 BASE = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE))
@@ -29,6 +30,71 @@ sys.path.insert(0, str(BASE / "core"))
 import admin_db
 import tenant_ctx
 from mailer import send_verification_email, send_reset_email
+
+
+SESSION_LIFETIME_DAYS = 7
+EXPIRED_TENANT_ALLOWED_ENDPOINTS = {
+    "upgrade_page",
+    "pay_coupon_check",
+    "pay_create",
+    "pay_status",
+    "pay_return",
+    "logout",
+    "static",
+}
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_production_env() -> bool:
+    env = (
+        os.environ.get("APP_ENV")
+        or os.environ.get("FLASK_ENV")
+        or os.environ.get("ENV")
+        or ""
+    ).strip().lower()
+    return env in {"prod", "production"}
+
+
+def _configure_session_security(flask_app: Flask) -> None:
+    flask_app.permanent_session_lifetime = timedelta(days=SESSION_LIFETIME_DAYS)
+    flask_app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=_is_production_env(),
+        PERMANENT_SESSION_LIFETIME=timedelta(days=SESSION_LIFETIME_DAYS),
+    )
+
+
+def _trusted_proxy_hops() -> int:
+    raw = os.environ.get("TRUSTED_PROXY_HOPS", "1").strip()
+    try:
+        hops = int(raw)
+    except ValueError as exc:
+        raise ValueError("TRUSTED_PROXY_HOPS must be an integer") from exc
+    if hops < 1 or hops > 5:
+        raise ValueError("TRUSTED_PROXY_HOPS must be between 1 and 5")
+    return hops
+
+
+def _configure_proxy_fix(flask_app: Flask) -> bool:
+    if not _env_flag("TRUST_PROXY_HEADERS"):
+        flask_app.config["TRUST_PROXY_HEADERS"] = False
+        return False
+    hops = _trusted_proxy_hops()
+    flask_app.wsgi_app = ProxyFix(
+        flask_app.wsgi_app,
+        x_for=hops,
+        x_proto=hops,
+        x_host=hops,
+        x_port=hops,
+        x_prefix=hops,
+    )
+    flask_app.config["TRUST_PROXY_HEADERS"] = True
+    flask_app.config["TRUSTED_PROXY_HOPS"] = hops
+    return True
 
 
 # ─────────────────────────────────────────────────────────
@@ -56,8 +122,9 @@ else:
             pass
         app.secret_key = _sk
 
-# 持久登录："60天免密登录"勾选时 session.permanent=True，按此存活期保持登录
-app.permanent_session_lifetime = timedelta(days=60)
+# 持久登录统一为 7 天；生产环境默认使用 Secure Cookie。
+_configure_session_security(app)
+_configure_proxy_fix(app)
 
 # CORS：允许本机 + 生产域名（SITE_URL）。独立站询盘的公开接口另有 _cors 放行 *
 _cors_origins = ["http://127.0.0.1:5001", "http://localhost:5001"]
@@ -66,11 +133,6 @@ if _site_origin and _site_origin not in _cors_origins:
     _cors_origins.append(_site_origin)
 CORS(app, origins=_cors_origins)
 
-app.config.update(
-    SESSION_COOKIE_HTTPONLY=True,   # JS 无法读取 cookie
-    SESSION_COOKIE_SAMESITE="Lax",  # 防 CSRF
-    PERMANENT_SESSION_LIFETIME=86400 * 7,  # 7天登录有效期
-)
 csrf = CSRFProtect(app)
 
 
@@ -141,7 +203,7 @@ _rl = _RateLimiter()
 
 
 def _client_ip():
-    return request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+    return request.remote_addr or "unknown"
 
 
 def rate_limit(max_hits: int, window: int, scope: str = ""):
@@ -162,36 +224,89 @@ def rate_limit(max_hits: int, window: int, scope: str = ""):
 # 工具装饰器
 # ─────────────────────────────────────────────────────────
 
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if "tenant_id" not in session:
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated
+def _wants_json_response() -> bool:
+    return request.is_json or request.accept_mimetypes.best == "application/json"
+
+
+def _rotate_session() -> None:
+    csrf_token = session.get("csrf_token")
+    session.clear()
+    if csrf_token:
+        session["csrf_token"] = csrf_token
+    session.permanent = True
+
+
+def _clear_tenant_session() -> None:
+    for key in ("tenant_id", "tenant_email", "company_name"):
+        session.pop(key, None)
+
+
+def _plan_expired(tenant: dict) -> bool:
+    if (tenant.get("plan") or "basic").lower() not in {"pro", "ultra"}:
+        return False
+    expires_at = tenant.get("plan_expires_at") or ""
+    return bool(expires_at and expires_at < admin_db._now())
+
+
+def _tenant_expired(tenant: dict) -> bool:
+    return admin_db.is_trial_expired(tenant) or _plan_expired(tenant)
+
+
+def _tenant_guard_response(error: str, status: int, endpoint: str):
+    if _wants_json_response():
+        return jsonify({"ok": False, "error": error}), status
+    return redirect(url_for(endpoint))
+
+
+def _require_tenant(*, onboarding: bool):
+    tid = session.get("tenant_id")
+    if not tid:
+        return _tenant_guard_response("login_required", 401, "login")
+
+    tenant = admin_db.get_tenant(tid)
+    if not tenant:
+        _clear_tenant_session()
+        return _tenant_guard_response("login_required", 401, "login")
+
+    g.current_tenant = tenant
+    if tenant.get("status") == "suspended":
+        _clear_tenant_session()
+        return _tenant_guard_response("account_suspended", 403, "login")
+
+    if _tenant_expired(tenant) and request.endpoint not in EXPIRED_TENANT_ALLOWED_ENDPOINTS:
+        return _tenant_guard_response("subscription_expired", 403, "upgrade_page")
+
+    if onboarding:
+        cfg = tenant_ctx.load_config(tid)
+        if not cfg.get("onboarding_step", 0) >= 3:
+            return redirect(url_for("onboarding_step",
+                            step=max(1, cfg.get("onboarding_step", 0) + 1)))
+    return None
 
 
 def onboarding_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if "tenant_id" not in session:
-            return redirect(url_for("login"))
-        cfg = tenant_ctx.load_config(session["tenant_id"])
-        if not cfg.get("onboarding_step", 0) >= 3:
-            return redirect(url_for("onboarding_step",
-                            step=max(1, cfg.get("onboarding_step", 0) + 1)))
+        blocked = _require_tenant(onboarding=True)
+        if blocked:
+            return blocked
+        return f(*args, **kwargs)
+    return decorated
+
+
+def tenant_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        blocked = _require_tenant(onboarding=False)
+        if blocked:
+            return blocked
         return f(*args, **kwargs)
     return decorated
 
 
 def login_required(f):
     """只要求已登录（不要求入驻完成）。用于入驻途中也能调的接口，如产品画像 AI 生成。"""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if "tenant_id" not in session:
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated
+    return tenant_required(f)
 
 
 def admin_required(f):
@@ -391,14 +506,13 @@ def login():
                 t = result["tenant"]
                 if not t.get("email_verified", 0):
                     error = "邮箱尚未验证，请查收注册邮件"
-                elif admin_db.is_trial_expired(t):
-                    error = "试用期已过，请联系客服开通正式版"
                 else:
-                    # 勾选"60天免密登录"才持久化(60天)，否则浏览器关闭即失效
-                    session.permanent = request.form.get("remember_login") == "on"
+                    _rotate_session()
                     session["tenant_id"]    = t["id"]
                     session["tenant_email"] = t["email"]
                     session["company_name"] = t.get("company_name", "")
+                    if _tenant_expired(t):
+                        return redirect(url_for("upgrade_page"))
                     cfg = tenant_ctx.load_config(t["id"])
                     if cfg.get("onboarding_step", 0) < 3:
                         return redirect(url_for("onboarding_step",
@@ -457,6 +571,7 @@ def verify_email(token):
         return render_template("auth/verify_pending.html",
                                email="", error=result["error"])
     admin_db.mark_email_verified(result["tenant_id"])
+    _rotate_session()
     session["tenant_id"]    = result["tenant_id"]
     session["tenant_email"] = result["email"]
     return redirect(url_for("onboarding_step", step=1))
@@ -2478,6 +2593,7 @@ def admin_login():
         result = admin_db.authenticate_admin(email, password)
         if result.get("ok"):
             admin = result["admin"]
+            _rotate_session()
             session["is_admin"]    = True
             session["admin_email"] = admin["email"]
             session["admin_id"] = admin["id"]
