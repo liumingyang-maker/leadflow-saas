@@ -15,6 +15,9 @@
 | `SMTP_PASS` | 该邮箱的 SMTP 授权码 | ✅ |
 | `SITE_URL` | 部署后的公网网址，如 `https://leadflow.xxx.com`（**末尾不要斜杠**） | ✅ |
 | `SECRET_KEY` | 一段长随机字符串（固定不变，别人不知道即可） | ✅ |
+| `APP_ENV` | 生产环境填 `production`，会启用 Secure Cookie；本地/测试可不填 | ✅ |
+| `TRUST_PROXY_HEADERS` | 只有应用前面有可信反向代理时才填 `true` | ⬜ |
+| `TRUSTED_PROXY_HOPS` | 可信代理层数，常见 Nginx 直连填 `1` | ⬜ |
 | `SMTP_HOST` | 默认 `smtp.qq.com`，用别的邮箱才改 | ⬜ |
 | `SMTP_PORT` | 默认 `465` | ⬜ |
 | `DATA_DIR` | `/data`（Dockerfile 已默认，一般不用填） | ⬜ |
@@ -61,6 +64,9 @@ SMTP_USER=你的邮箱
 SMTP_PASS=你的SMTP授权码
 SITE_URL=https://你的域名
 SECRET_KEY=换成一长串随机字符
+APP_ENV=production
+TRUST_PROXY_HEADERS=true
+TRUSTED_PROXY_HOPS=1
 EOF
 
 # 3. 构建并运行（数据挂到宿主机 /opt/leadflow-data，重启不丢）
@@ -74,6 +80,7 @@ docker run -d --name leadflow --restart always \
 ```
 
 4. **HTTPS**：前面架个 Nginx 反向代理到 `127.0.0.1:8080`，用 certbot 申请免费证书。
+   只有这类可信反向代理场景才启用 `TRUST_PROXY_HEADERS=true`，并按实际代理层数设置 `TRUSTED_PROXY_HOPS`。
    （或用阿里云的 SLB/证书服务。）
 5. 安全组放行 80/443。绑域名要 ICP 备案（境内）或用境外地域免备案。
 
@@ -85,6 +92,7 @@ docker run -d --name leadflow --restart always \
 
 - [ ] 使用 `python -m scripts.create_admin create` 创建首个管理员，或用 `python -m scripts.create_admin reset-password` 重置现有管理员密码。
 - [ ] 确认 `SITE_URL` 是最终 https 域名。
+- [ ] 确认生产环境设置 `APP_ENV=production`，并且只在可信反向代理后启用 `TRUST_PROXY_HEADERS=true`。
 - [ ] 发一封测试注册邮件，确认系统邮件能发出（SMTP 配对）。
 - [ ] **数据备份**：定期把持久卷里的 `admin.db` 和 `tenants/` 打包备份到对象存储
       （客户数据是命根子，别只存一份）。
