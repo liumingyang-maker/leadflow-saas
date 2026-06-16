@@ -28,6 +28,7 @@ sys.path.insert(0, str(BASE))
 sys.path.insert(0, str(BASE / "core"))
 
 import admin_db
+import inbound_security
 import tenant_ctx
 from mailer import send_verification_email, send_reset_email
 
@@ -1173,8 +1174,21 @@ def inbound_page():
     token    = admin_db.get_inbound_token(tid)
     base     = request.host_url.rstrip("/")
     endpoint = f"{base}/api/inbound/{token}" if token else ""
-    return render_template("app/inbound.html", cfg=current_cfg(),
-                           token=token, endpoint=endpoint, base=base)
+    cfg      = current_cfg()
+    return render_template("app/inbound.html", cfg=cfg,
+                           token=token, endpoint=endpoint, base=base,
+                           inbound_allowed_origins=cfg.get("inbound_allowed_origins", ""))
+
+
+@app.route("/inbound/origins", methods=["POST"])
+@onboarding_required
+def inbound_origins_save():
+    origins = (request.form.get("inbound_allowed_origins") or "").strip()
+    parsed = inbound_security.parse_allowed_origins(origins)
+    cfg = tenant_ctx.load_config(current_tid())
+    cfg["inbound_allowed_origins"] = "\n".join(sorted(parsed))
+    tenant_ctx.save_config(current_tid(), cfg)
+    return redirect(url_for("inbound_page"))
 
 
 @app.route("/inbound/regenerate", methods=["POST"])
@@ -1184,63 +1198,192 @@ def inbound_regenerate():
     return redirect(url_for("inbound_page"))
 
 
-def _cors(resp):
-    resp.headers["Access-Control-Allow-Origin"]  = "*"
-    resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Max-Age"]       = "86400"
+def _inbound_json(payload: dict, status: int, origin: str = ""):
+    resp = jsonify(payload)
+    if origin:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+    return resp, status
+
+
+def _inbound_empty(status: int, origin: str = ""):
+    resp = app.make_response(("", status))
+    if origin:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
     return resp
+
+
+def _inbound_preflight(origin: str = ""):
+    resp = _inbound_empty(204, origin)
+    resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Idempotency-Key"
+    resp.headers["Access-Control-Max-Age"] = "600"
+    return resp
+
+
+def _inbound_origin(tid: str):
+    cfg = tenant_ctx.load_config(tid)
+    allowed = inbound_security.parse_allowed_origins(cfg.get("inbound_allowed_origins"))
+    ok, normalized = inbound_security.is_origin_allowed(request.headers.get("Origin"), allowed)
+    return ok, normalized
+
+
+def _inbound_body_data():
+    limit = inbound_security.max_body_bytes()
+    if request.content_length is not None and request.content_length > limit:
+        return None, _inbound_json({"ok": False, "error": "payload_too_large"}, 413)
+    raw = request.get_data(cache=True)
+    if len(raw) > limit:
+        return None, _inbound_json({"ok": False, "error": "payload_too_large"}, 413)
+    if request.is_json:
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return None, _inbound_json({"ok": False, "error": "invalid_request"}, 400)
+        return data, None
+    if request.mimetype == "application/x-www-form-urlencoded":
+        return request.form.to_dict(), None
+    return None, _inbound_json({"ok": False, "error": "unsupported_media_type"}, 415)
+
+
+def _inbound_rate_limited(tid: str, token_digest: str, origin: str = ""):
+    window = inbound_security.rate_window_seconds()
+    ip_digest = inbound_security.secret_digest(str(_client_ip()), str(app.secret_key))
+    checks = (
+        (
+            "token_ip",
+            f"{token_digest}:{ip_digest}",
+            inbound_security.token_ip_limit(),
+        ),
+        ("tenant", tid, inbound_security.tenant_limit()),
+    )
+    for scope, bucket, limit in checks:
+        result = admin_db.check_inbound_rate_limit(scope, bucket, limit, window)
+        if not result["ok"]:
+            response, status = _inbound_json({"ok": False, "error": "rate_limited"}, 429, origin)
+            response.headers["Retry-After"] = str(result["retry_after"])
+            return response, status
+    return None
+
+
+def _inbound_lead_from_payload(payload: dict):
+    source = payload.get("source") or "inbound"
+    notes = "[inbound]"
+    if payload.get("message"):
+        notes += " " + payload["message"]
+    if payload.get("page_url"):
+        notes += f"\npage_url: {payload['page_url']}"
+    if payload.get("referrer"):
+        notes += f"\nreferrer: {payload['referrer']}"
+    return {
+        "company_name": payload.get("company") or "Website visitor",
+        "email": payload.get("email"),
+        "phone": payload.get("phone"),
+        "contact_name": payload.get("name"),
+        "website": payload.get("page_url"),
+        "notes": notes,
+        "source": source,
+        "sources": ["inbound"],
+        "status": "new",
+    }
+
+
+def _reserve_inbound_request(tid: str, token_digest: str, payload_hash: str):
+    try:
+        raw_key = inbound_security.normalize_idempotency_key(
+            request.headers.get("Idempotency-Key")
+        )
+    except inbound_security.InboundValidationError:
+        return "", "", _inbound_json({"ok": False, "error": "invalid_request"}, 400)
+    if raw_key:
+        key_type = "header"
+        key_digest = inbound_security.stable_digest(raw_key)
+        ttl = inbound_security.idempotency_ttl_seconds()
+    else:
+        key_type = "fingerprint"
+        key_digest = payload_hash
+        ttl = inbound_security.fingerprint_ttl_seconds()
+    state = admin_db.reserve_inbound_idempotency(
+        tid, token_digest, key_type, key_digest, payload_hash, ttl
+    )
+    if state["state"] == "conflict":
+        return key_type, key_digest, _inbound_json({"ok": False, "error": "idempotency_conflict"}, 409)
+    if state["state"] == "duplicate":
+        return key_type, key_digest, _inbound_json({"ok": True, "status": "duplicate"}, 200)
+    if state["state"] == "pending":
+        return key_type, key_digest, _inbound_json({"ok": False, "error": "request_in_progress"}, 409)
+    return key_type, key_digest, None
 
 
 @app.route("/api/inbound/<token>", methods=["POST", "OPTIONS"])
 @csrf.exempt  # Public site widget API: protected by per-tenant inbound token + rate limit.
 def api_inbound(token):
     """公开接收接口：客户独立站的询盘表单 POST 到这里，自动入库为线索。"""
-    if request.method == "OPTIONS":
-        return _cors(app.make_response(("", 204)))
-    # 防刷：每 token+IP 每分钟最多 60 条
-    if not _rl.check(f"inbound:{token}:{_client_ip()}", 60, 60):
-        return _cors(jsonify({"ok": False, "error": "too many requests"})), 429
     tid = admin_db.get_tid_by_inbound_token(token)
-    if not tid:
-        return _cors(jsonify({"ok": False, "error": "invalid token"})), 404
+    tenant = admin_db.get_tenant(tid) if tid else None
+    if not tid or not tenant or tenant.get("status") == "suspended" or _tenant_expired(tenant):
+        return _inbound_json({"ok": False, "error": "not_found"}, 404)
 
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    origin_ok, cors_origin = _inbound_origin(tid)
+    if not origin_ok:
+        return _inbound_json({"ok": False, "error": "origin_not_allowed"}, 403)
+    if request.method == "OPTIONS":
+        return _inbound_preflight(cors_origin)
 
-    def g(*keys):
-        for k in keys:
-            v = data.get(k)
-            if v and str(v).strip():
-                return str(v).strip()[:300]
-        return ""
+    token_digest = admin_db.get_inbound_token_digest(token)
+    rate_response = _inbound_rate_limited(tid, token_digest, cors_origin)
+    if rate_response:
+        return rate_response
 
-    email   = g("email", "Email", "e-mail", "mail", "your-email")
-    name    = g("name", "Name", "fullname", "contact_name", "your-name")
-    company = (g("company", "Company", "company_name", "organization")
-               or name or (email.split("@")[0] if email else "") or "网站访客")
-    message = g("message", "Message", "msg", "comment", "comments",
-                "inquiry", "content", "your-message")[:1000]
-    phone   = g("phone", "Phone", "tel", "mobile", "whatsapp")
-    country = g("country", "Country")
-    website = g("website", "Website", "url", "site")
+    data, parse_error = _inbound_body_data()
+    if parse_error:
+        response, status = parse_error
+        if cors_origin:
+            response.headers["Access-Control-Allow-Origin"] = cors_origin
+            response.headers["Vary"] = "Origin"
+        return response, status
 
-    if not email and not phone:
-        return _cors(jsonify({"ok": False, "error": "need email or phone"})), 400
+    if str(data.get(inbound_security.HONEYPOT_FIELD, "")).strip():
+        return _inbound_json({"ok": True, "status": "accepted"}, 202, cors_origin)
 
-    lead = {
-        "company_name": company, "country": country, "email": email,
-        "phone": phone, "contact_name": name, "website": website,
-        "notes": ("[网站询盘] " + message) if message else "[网站询盘]",
-        "source": "独立站询盘", "sources": ["inbound"], "status": "new",
-    }
     try:
-        from module2_cleaner import DataCleaner
-        DataCleaner().run([lead], source="独立站询盘",
-                          db_path=tenant_ctx.get_db_path(tid))
-    except Exception as e:
-        print(f"[inbound] 入库失败: {e}")
-        return _cors(jsonify({"ok": False, "error": "server error"})), 500
-    return _cors(jsonify({"ok": True}))
+        payload = inbound_security.normalize_payload(data)
+    except inbound_security.InboundValidationError:
+        return _inbound_json({"ok": False, "error": "invalid_request"}, 400, cors_origin)
+
+    key_type, key_digest, idem_response = _reserve_inbound_request(
+        tid, token_digest, payload.fingerprint
+    )
+    if idem_response:
+        response, status = idem_response
+        if cors_origin:
+            response.headers["Access-Control-Allow-Origin"] = cors_origin
+            response.headers["Vary"] = "Origin"
+        return response, status
+
+    try:
+        db = _get_db(tid)
+        lead_id = db.insert_lead(_inbound_lead_from_payload(payload.data))
+    except Exception:
+        admin_db.release_inbound_idempotency(tid, token_digest, key_type, key_digest)
+        return _inbound_json({"ok": False, "error": "server_error"}, 500, cors_origin)
+
+    response_body = {"ok": True, "status": "created", "lead_id": lead_id}
+    admin_db.complete_inbound_idempotency(tid, token_digest, key_type, key_digest, response_body)
+    if key_type != "fingerprint":
+        fingerprint_state = admin_db.reserve_inbound_idempotency(
+            tid,
+            token_digest,
+            "fingerprint",
+            payload.fingerprint,
+            payload.fingerprint,
+            inbound_security.fingerprint_ttl_seconds(),
+        )
+        if fingerprint_state["state"] == "reserved":
+            admin_db.complete_inbound_idempotency(
+                tid, token_digest, "fingerprint", payload.fingerprint, response_body
+            )
+    return _inbound_json(response_body, 201, cors_origin)
 
 
 # ─────────────────────────────────────────────────────────

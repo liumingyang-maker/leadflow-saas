@@ -92,6 +92,14 @@ def _decrypt_secret(field: str, value: str) -> str:
     raise SecretStoreError(f"Unable to decrypt tenant secret: {field}") from last_error
 
 
+def encrypt_secret_value(value: str) -> str:
+    return _encrypt_secret(value)
+
+
+def decrypt_secret_value(field: str, value: str) -> str:
+    return _decrypt_secret(field, value)
+
+
 def _decrypt_config(cfg: dict) -> dict:
     out = dict(cfg)
     for field in SECRET_FIELDS:
