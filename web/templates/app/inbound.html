@@ -39,6 +39,20 @@
     {% endif %}
   </div>
 
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:10px;color:#374151">Browser origins allowed to submit leads</h3>
+    <form method="POST" action="/inbound/origins">
+      {{ csrf_field() }}
+      <textarea name="inbound_allowed_origins" rows="4"
+                style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace"
+                placeholder="https://www.example.com&#10;https://shop.example.com">{{ inbound_allowed_origins }}</textarea>
+      <p style="font-size:12px;color:#6b7280;margin:8px 0 12px">
+        Add exact http/https origins only. Browser requests from other origins are rejected; server-to-server requests without an Origin header can still use the token.
+      </p>
+      <button type="submit" style="padding:8px 16px;border:none;background:#2563eb;color:#fff;border-radius:6px;font-size:13px;cursor:pointer">Save origins</button>
+    </form>
+  </div>
+
   <!-- 方式一：JS 片段 -->
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
     <h3 style="font-size:14px;font-weight:600;margin-bottom:6px;color:#374151">
@@ -56,7 +70,8 @@
     form.addEventListener('submit', function(){
       var obj = {}; new FormData(form).forEach(function(v,k){ obj[k]=v; });
       fetch(ENDPOINT, {method:'POST', keepalive:true,
-        headers:{'Content-Type':'application/json'}, body:JSON.stringify(obj)
+        headers:{'Content-Type':'application/json','Idempotency-Key':Date.now()+'-'+Math.random()},
+        body:JSON.stringify(obj)
       }).catch(function(){});
     });
   });
@@ -95,6 +110,7 @@
     </h3>
     <p style="font-size:13px;color:#6b7280;margin-bottom:10px">把这段贴到网页里就是一个能用的询盘表单（适合不会写代码的情况）。</p>
     <pre id="formhtml" style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;font-size:12px;overflow-x:auto;line-height:1.6"><code>&lt;form data-leadflow&gt;
+  &lt;input type="text" name="_website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px"&gt;
   &lt;input name="name" placeholder="Your Name"&gt;
   &lt;input name="email" placeholder="Email" required&gt;
   &lt;input name="company" placeholder="Company"&gt;

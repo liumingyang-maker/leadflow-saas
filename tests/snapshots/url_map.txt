@@ -35,6 +35,7 @@ GET | /import | import_page
 POST | /import/confirm | import_confirm
 POST | /import/upload | import_upload
 GET | /inbound | inbound_page
+POST | /inbound/origins | inbound_origins_save
 POST | /inbound/regenerate | inbound_regenerate
 GET | /lead/<lead_id> | lead_detail
 POST | /lead/<lead_id>/ai-email | ai_write_email

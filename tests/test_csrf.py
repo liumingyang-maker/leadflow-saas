@@ -247,7 +247,7 @@ def test_public_inbound_api_is_csrf_exempt_but_still_requires_token(client):
     )
 
     assert response.status_code == 404
-    assert response.get_json()["error"] == "invalid token"
+    assert response.get_json()["error"] == "not_found"
 
 
 def test_payment_notify_is_csrf_exempt_but_still_uses_provider_verification(client):
@@ -337,10 +337,10 @@ def _email_token_used(admin_db, token: str) -> int:
 def _inbound_tokens(admin_db, tid: str) -> list[str]:
     with admin_db.get_conn() as conn:
         rows = conn.execute(
-            "SELECT token FROM inbound_tokens WHERE tenant_id=? ORDER BY token",
+            "SELECT tenant_id FROM inbound_tokens WHERE tenant_id=? ORDER BY tenant_id",
             (tid,),
         ).fetchall()
-    return [row["token"] for row in rows]
+    return [admin_db.get_inbound_token(row["tenant_id"]) for row in rows]
 
 
 def test_email_templates_reset_is_post_only_and_does_not_mutate_on_get(client, isolated_admin_db):

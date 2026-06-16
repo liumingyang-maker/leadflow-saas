@@ -11,6 +11,9 @@ import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import inbound_security
+import tenant_ctx
+
 # 数据目录：默认项目根目录；部署挂载持久卷时用环境变量 DATA_DIR（如 /data）
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent)))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -19,6 +22,10 @@ ADMIN_DB_PATH = DATA_DIR / "admin.db"
 
 def _now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _unix_now() -> int:
+    return int(datetime.now(timezone.utc).timestamp())
 
 
 def get_conn():
@@ -221,6 +228,42 @@ def init():
         except sqlite3.OperationalError as exc:
             if "duplicate column name" not in str(exc).lower():
                 raise
+        for ddl in (
+            "ALTER TABLE inbound_tokens ADD COLUMN token_digest TEXT DEFAULT ''",
+            "ALTER TABLE inbound_tokens ADD COLUMN token_ciphertext TEXT DEFAULT ''",
+        ):
+            try:
+                conn.execute(ddl)
+            except sqlite3.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise
+        conn.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_inbound_tokens_digest
+                ON inbound_tokens(token_digest);
+
+            CREATE TABLE IF NOT EXISTS inbound_rate_limits (
+                scope    TEXT NOT NULL,
+                bucket   TEXT NOT NULL,
+                count    INTEGER DEFAULT 0,
+                reset_at INTEGER NOT NULL,
+                PRIMARY KEY (scope, bucket)
+            );
+
+            CREATE TABLE IF NOT EXISTS inbound_idempotency (
+                tenant_id    TEXT NOT NULL,
+                token_digest TEXT NOT NULL,
+                key_type     TEXT NOT NULL,
+                key_digest   TEXT NOT NULL,
+                payload_hash TEXT NOT NULL,
+                status       TEXT NOT NULL,
+                response_json TEXT DEFAULT '',
+                created_at   INTEGER NOT NULL,
+                expires_at   INTEGER NOT NULL,
+                PRIMARY KEY (tenant_id, token_digest, key_type, key_digest)
+            );
+            CREATE INDEX IF NOT EXISTS idx_inbound_idempotency_expires
+                ON inbound_idempotency(expires_at);
+        """)
 
 
 # ── 密码哈希（PBKDF2 + 随机盐）────────────────────────────
@@ -782,37 +825,58 @@ def is_trial_expired(tenant: dict) -> bool:
 
 # ── 独立站询盘 token ──────────────────────────────────────
 
+def _store_inbound_token(conn, tid: str, token: str) -> None:
+    digest = inbound_security.token_digest(token)
+    encrypted = tenant_ctx.encrypt_secret_value(token)
+    conn.execute(
+        """
+        INSERT INTO inbound_tokens (
+            token, tenant_id, created_at, token_digest, token_ciphertext
+        ) VALUES (?,?,?,?,?)
+        ON CONFLICT(tenant_id) DO UPDATE SET
+            token=excluded.token,
+            created_at=excluded.created_at,
+            token_digest=excluded.token_digest,
+            token_ciphertext=excluded.token_ciphertext
+        """,
+        (f"sha256:{digest}", tid, _now(), digest, encrypted),
+    )
+
+
+def _decrypt_inbound_token(row) -> str:
+    encrypted = row["token_ciphertext"] if "token_ciphertext" in row.keys() else ""
+    if encrypted:
+        return tenant_ctx.decrypt_secret_value("inbound_token", encrypted)
+    return row["token"]
+
+
 def get_inbound_token(tid: str) -> str:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT token FROM inbound_tokens WHERE tenant_id=?", (tid,)
+            "SELECT * FROM inbound_tokens WHERE tenant_id=?", (tid,)
         ).fetchone()
-    return row["token"] if row else ""
+    return _decrypt_inbound_token(row) if row else ""
 
 
 def get_or_create_inbound_token(tid: str) -> str:
     """返回租户的独立站询盘专属 token，不存在则生成。"""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT token FROM inbound_tokens WHERE tenant_id=?", (tid,)
+            "SELECT * FROM inbound_tokens WHERE tenant_id=?", (tid,)
         ).fetchone()
         if row:
-            return row["token"]
-        token = "in_" + uuid.uuid4().hex
-        conn.execute(
-            "INSERT INTO inbound_tokens (token, tenant_id, created_at) VALUES (?,?,?)",
-            (token, tid, _now()))
+            return _decrypt_inbound_token(row)
+        token = inbound_security.generate_inbound_token()
+        _store_inbound_token(conn, tid, token)
         return token
 
 
 def regenerate_inbound_token(tid: str) -> str:
     """重置租户的询盘 token（旧的失效，用于泄露后更换）。"""
-    token = "in_" + uuid.uuid4().hex
+    token = inbound_security.generate_inbound_token()
     with get_conn() as conn:
-        conn.execute("DELETE FROM inbound_tokens WHERE tenant_id=?", (tid,))
-        conn.execute(
-            "INSERT INTO inbound_tokens (token, tenant_id, created_at) VALUES (?,?,?)",
-            (token, tid, _now()))
+        conn.execute("BEGIN IMMEDIATE")
+        _store_inbound_token(conn, tid, token)
     return token
 
 
@@ -820,14 +884,135 @@ def get_tid_by_inbound_token(token: str):
     """公开接收接口用：按 token 反查租户 id，找不到返回 None。"""
     if not token or not token.startswith("in_"):
         return None
+    digest = inbound_security.token_digest(token)
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT tenant_id FROM inbound_tokens WHERE token=?", (token,)
+            "SELECT tenant_id FROM inbound_tokens WHERE token_digest=?", (digest,)
         ).fetchone()
+        if not row:
+            row = conn.execute(
+                "SELECT tenant_id FROM inbound_tokens WHERE token=? AND token_digest=''",
+                (token,),
+            ).fetchone()
     return row["tenant_id"] if row else None
 
 
 # ── 自动跟进序列 ──────────────────────────────────────────
+
+def get_inbound_token_digest(token: str) -> str:
+    return inbound_security.token_digest(token)
+
+
+def check_inbound_rate_limit(scope: str, bucket: str, limit: int, window_seconds: int) -> dict:
+    now = _unix_now()
+    reset_at = now + window_seconds
+    with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM inbound_rate_limits WHERE reset_at <= ?", (now,))
+        row = conn.execute(
+            "SELECT count, reset_at FROM inbound_rate_limits WHERE scope=? AND bucket=?",
+            (scope, bucket),
+        ).fetchone()
+        if not row:
+            conn.execute(
+                """
+                INSERT INTO inbound_rate_limits (scope, bucket, count, reset_at)
+                VALUES (?,?,?,?)
+                """,
+                (scope, bucket, 1, reset_at),
+            )
+            return {"ok": True, "retry_after": window_seconds}
+        if int(row["count"]) >= limit:
+            return {"ok": False, "retry_after": max(1, int(row["reset_at"]) - now)}
+        conn.execute(
+            "UPDATE inbound_rate_limits SET count=count+1 WHERE scope=? AND bucket=?",
+            (scope, bucket),
+        )
+        return {"ok": True, "retry_after": max(1, int(row["reset_at"]) - now)}
+
+
+def reserve_inbound_idempotency(
+    tenant_id: str,
+    token_digest: str,
+    key_type: str,
+    key_digest: str,
+    payload_hash: str,
+    ttl_seconds: int,
+) -> dict:
+    now = _unix_now()
+    expires_at = now + ttl_seconds
+    with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM inbound_idempotency WHERE expires_at <= ?", (now,))
+        row = conn.execute(
+            """
+            SELECT payload_hash, status, response_json
+              FROM inbound_idempotency
+             WHERE tenant_id=? AND token_digest=? AND key_type=? AND key_digest=?
+            """,
+            (tenant_id, token_digest, key_type, key_digest),
+        ).fetchone()
+        if row:
+            if row["payload_hash"] != payload_hash:
+                return {"state": "conflict"}
+            if row["status"] == "done":
+                return {"state": "duplicate", "response": row["response_json"]}
+            return {"state": "pending"}
+        conn.execute(
+            """
+            INSERT INTO inbound_idempotency (
+                tenant_id, token_digest, key_type, key_digest, payload_hash,
+                status, response_json, created_at, expires_at
+            ) VALUES (?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                tenant_id,
+                token_digest,
+                key_type,
+                key_digest,
+                payload_hash,
+                "pending",
+                "",
+                now,
+                expires_at,
+            ),
+        )
+        return {"state": "reserved"}
+
+
+def complete_inbound_idempotency(
+    tenant_id: str,
+    token_digest: str,
+    key_type: str,
+    key_digest: str,
+    response: dict,
+) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE inbound_idempotency
+               SET status='done', response_json=?
+             WHERE tenant_id=? AND token_digest=? AND key_type=? AND key_digest=?
+            """,
+            (json.dumps(response, sort_keys=True), tenant_id, token_digest, key_type, key_digest),
+        )
+
+
+def release_inbound_idempotency(
+    tenant_id: str,
+    token_digest: str,
+    key_type: str,
+    key_digest: str,
+) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            DELETE FROM inbound_idempotency
+             WHERE tenant_id=? AND token_digest=? AND key_type=? AND key_digest=?
+            """,
+            (tenant_id, token_digest, key_type, key_digest),
+        )
+
 
 def enroll_followup(tenant_id: str, lead_id: str, next_send_at: str) -> None:
     """客户发了首封开发信后登记进跟进序列；已存在则重置为 active 第0步。"""
